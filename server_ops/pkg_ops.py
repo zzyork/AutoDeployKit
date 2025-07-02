@@ -1,4 +1,4 @@
-from utils.ssh import run_command, run_command_live
+from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from colorama import Fore
 

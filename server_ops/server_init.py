@@ -2,6 +2,9 @@ from .hostname_ops import manage_hostname
 from .yum_repos_ops import manage_yum_repos
 from .pkg_ops import manage_packages
 from .firewall_selinux_ops import manage_firewall_selinux
+from .kernel_optimize_ops import kernel_optimize
+from .disk_partition_ops import manage_disk_partition
+from .system_optimize_ops import manage_system_optimize
 
 from colorama import Fore, Style
 from utils.output import print_info, print_success, print_warning
@@ -12,6 +15,9 @@ operations = {
     "2": ("管理 Yum 源", manage_yum_repos),
     "3": ("管理软件包", manage_packages),
     "4": ("配置防火墙和 SELinux", manage_firewall_selinux),
+    "5": ("内核参数调优", kernel_optimize),
+    "6": ("磁盘分区与挂载", manage_disk_partition),
+    "7": ("系统优化", manage_system_optimize),
 }
 
 def run(client):

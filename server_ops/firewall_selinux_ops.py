@@ -1,11 +1,11 @@
-from utils.ssh import run_command, run_command_live
+from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from colorama import Fore
 
 
 def check_and_disable_firewalld(client):
     print_info("检查 firewalld 状态 ...")
-    output, err = run_command(client, "systemctl is-active firewalld")
+    output, err, _ = run_command(client, "systemctl is-active firewalld")
     status = output.strip()
 
     if err or status not in ["active", "inactive"]:

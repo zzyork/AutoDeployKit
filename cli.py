@@ -1,6 +1,6 @@
 import sys
 import configparser
-from utils.ssh import ssh_connect
+from utils.ssh_utils import ssh_connect
 
 def load_hosts(group, filename="hosts"):
     config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",))

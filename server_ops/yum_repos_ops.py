@@ -2,12 +2,12 @@ import re
 from colorama import Fore
 
 from utils.output import print_error, print_success, print_warning, print_info
-from utils.ssh import run_command
+from utils.ssh_utils import run_command
 
 def backup_yum_repo(client, filepath):
     backup_path = filepath + ".bak"
     cmd = f"cp {filepath} {backup_path}"
-    _, err = run_command(client, cmd)
+    _, err, _ = run_command(client, cmd)
     if err:
         print_error(f"备份文件 {filepath} 失败: {err}")
         return False
@@ -15,7 +15,7 @@ def backup_yum_repo(client, filepath):
     return True
 
 def list_yum_repos(client):
-    repo_files_out, err = run_command(client, "ls /etc/yum.repos.d/*.repo")
+    repo_files_out, err, _ = run_command(client, "ls /etc/yum.repos.d/*.repo")
     if err:
         print_error("获取 yum repo 文件列表失败: " + err)
         return {}
@@ -27,7 +27,7 @@ def list_yum_repos(client):
 
     repos = {}
     for filepath in repo_files:
-        content, err = run_command(client, f"cat {filepath}")
+        content, err, _ = run_command(client, f"cat {filepath}")
         if err:
             print_error(f"读取 {filepath} 失败: {err}")
             continue
@@ -73,7 +73,7 @@ def modify_yum_repo_url(client, repo_name, repos):
 
     new_url_esc = new_url.replace("/", "\\/")
     sed_baseurl_cmd = f"sed -i 's|^baseurl=.*|baseurl={new_url_esc}|' {filepath}"
-    _, err = run_command(client, sed_baseurl_cmd)
+    _, err, _ = run_command(client, sed_baseurl_cmd)
     if err:
         print_warning(f"替换 baseurl 失败，尝试替换 mirrorlist: {err}")
         sed_mirror_cmd = f"sed -i 's|^mirrorlist=.*|mirrorlist={new_url_esc}|' {filepath}"

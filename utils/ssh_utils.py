@@ -15,7 +15,10 @@ def ssh_connect(host, user, password=None, key_file=None):
 
 def run_command(client, command):
     stdin, stdout, stderr = client.exec_command(command)
-    return stdout.read().decode(), stderr.read().decode()
+    out = stdout.read().decode()
+    err = stderr.read().decode()
+    status = stdout.channel.recv_exit_status()
+    return out, err, status
 
 def run_command_live(client, command):
     print(f"\n>> 正在远程执行: {command}\n")
@@ -41,3 +44,8 @@ def run_command_live(client, command):
 
     exit_status = channel.recv_exit_status()
     return output, exit_status
+
+def upload_file(client, local_path, remote_path):
+    sftp = client.open_sftp()
+    sftp.put(local_path, remote_path)
+    sftp.close()
