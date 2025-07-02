@@ -2,7 +2,8 @@
 
 # 服务器初始化优化工具
 
-这是一个用于自动化执行服务器初始化和优化任务的 Python 工具集，适用于 Linux 系统管理。
+这是一个用于自动化执行服务器任务的 Python 工具集，适用于 Linux 系统管理。
+目前只写了一个服务器初始化功能，正在添加其他功能
 
 ## 功能特性
 
@@ -25,7 +26,7 @@ pip install -r requirements.txt
 
 3. 运行 cli.py 脚本开始操作：
 ```bash
-python cli.py
+python cli.py module group
 ```
 
 ## 主要模块
