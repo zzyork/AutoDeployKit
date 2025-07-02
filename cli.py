@@ -44,7 +44,7 @@ def main():
     module_name = sys.argv[1]
     group = sys.argv[2]
 
-    # 动态导入模块，比如server_init
+    # 动态导入模块
     try:
         module = __import__(f"server_ops.{module_name}", fromlist=[''])
     except ImportError:
@@ -53,15 +53,25 @@ def main():
 
     hosts = load_hosts(group)
 
+    clients = []
     for entry in hosts:
-        print(f"连接 {entry['host']} ...")
+        # print(f"连接 {entry['host']} ...")
         try:
             client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"))
-            # 调用模块里的 run 函数，传入ssh客户端
-            module.run(client)
-            client.close()
+            clients.append((entry['host'], client))
         except Exception as e:
             print(f"连接失败 {entry['host']}: {e}")
+
+    if not clients:
+        print("无可用连接，程序退出。")
+        sys.exit(1)
+
+    # 将多个连接交给模块统一处理
+    try:
+        module.run(clients)
+    finally:
+        for _, client in clients:
+            client.close()
 
 if __name__ == "__main__":
     main()

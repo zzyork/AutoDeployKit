@@ -15,8 +15,7 @@ LIMIT_RULES = {
         "* hard nofile 65535"
     ],
     "nproc": [
-        "* soft nproc 65535",
-        "* hard nproc 65535"
+        "* soft nproc 65535\n* hard nproc 65535"
     ]
 }
 
@@ -26,6 +25,7 @@ def check_and_optimize_limits(client):
 
     cmd = f"grep -E '^\\*' {LIMITS_FILE} || true"
     output, _, _ = run_command(client, cmd)
+    print(output)
 
     for limit_type, rules in LIMIT_RULES.items():
         missing = [r for r in rules if r not in output]

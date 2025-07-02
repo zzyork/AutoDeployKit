@@ -7,7 +7,7 @@ from .disk_partition_ops import manage_disk_partition
 from .system_optimize_ops import manage_system_optimize
 
 from colorama import Fore, Style
-from utils.output import print_info, print_success, print_warning
+from utils.output import print_info, print_warning, print_error
 
 # 注册所有操作：编号 -> (描述, 函数)
 operations = {
@@ -20,7 +20,7 @@ operations = {
     "7": ("系统优化", manage_system_optimize),
 }
 
-def run(client):
+def run(clients):
     print(Style.BRIGHT + "-" * 40)
     print_info("开始执行服务器初始化操作")
     print(Style.BRIGHT + "-" * 40)
@@ -36,13 +36,15 @@ def run(client):
         if choice == "0":
             print_info("退出服务器初始化。")
             break
-        elif choice in operations:
-            desc, func = operations[choice]
-            print_info(f"\n>>> 执行操作：{desc}")
-            func(client)
-        else:
+
+        if choice not in operations:
             print_warning("无效输入，请重新选择。")
 
-    print(Style.BRIGHT + "-" * 40)
-    print_success("服务器初始化操作完成")
-    print(Style.BRIGHT + "-" * 40)
+        _, func = operations[choice]
+
+        for hostname, client in clients:
+            print(f"\n当前操作的服务器：[{hostname}]")
+            try:
+                func(client)
+            except Exception as e:
+                print_error(f"[{hostname}] 执行失败：{e}")
