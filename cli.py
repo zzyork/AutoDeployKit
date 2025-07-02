@@ -1,3 +1,4 @@
+import importlib
 import sys
 import configparser
 from utils.ssh_utils import ssh_connect
@@ -46,9 +47,9 @@ def main():
 
     # 动态导入模块
     try:
-        module = __import__(f"server_ops.{module_name}", fromlist=[''])
+        module = importlib.import_module(f"{module_name}.main")
     except ImportError:
-        print(f"错误：找不到模块 server_ops.{module_name}")
+        print(f"错误：找不到模块 {module_name}")
         sys.exit(1)
 
     hosts = load_hosts(group)

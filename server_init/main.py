@@ -1,10 +1,10 @@
-from .hostname_ops import manage_hostname
-from .yum_repos_ops import manage_yum_repos
-from .pkg_ops import manage_packages
-from .firewall_selinux_ops import manage_firewall_selinux
-from .kernel_optimize_ops import kernel_optimize
-from .disk_partition_ops import manage_disk_partition
-from .system_optimize_ops import manage_system_optimize
+from server_init.hostname_ops import manage_hostname
+from server_init.yum_repos_ops import manage_yum_repos
+from server_init.pkg_ops import manage_packages
+from server_init.firewall_selinux_ops import manage_firewall_selinux
+from server_init.kernel_optimize_ops import kernel_optimize
+from server_init.disk_partition_ops import manage_disk_partition
+from server_init.system_optimize_ops import manage_system_optimize
 
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
