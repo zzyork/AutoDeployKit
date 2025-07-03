@@ -45,7 +45,7 @@ def run(clients):
         _, func = operations[choice]
 
         for hostname, client in clients:
-            print(f"\n当前操作的服务器：[{hostname}]")
+            print_info(f"\n当前操作的服务器：[{hostname}]")
             try:
                 func(client)
             except Exception as e:

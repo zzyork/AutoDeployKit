@@ -45,7 +45,3 @@ def run_command_live(client, command):
     exit_status = channel.recv_exit_status()
     return output, exit_status
 
-def upload_file(client, local_path, remote_path):
-    sftp = client.open_sftp()
-    sftp.put(local_path, remote_path)
-    sftp.close()

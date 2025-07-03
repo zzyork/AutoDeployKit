@@ -1,7 +1,8 @@
 import os
 import time
 
-from utils.ssh_utils import run_command, run_command_live, upload_file
+from utils.ssh_utils import run_command, run_command_live
+from utils.file_utils import upload_file
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.hash_utils import get_local_md5, get_remote_md5
 from colorama import Fore
