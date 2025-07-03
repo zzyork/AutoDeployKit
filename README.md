@@ -24,10 +24,13 @@ pip install -r requirements.txt
 
 2. 修改 hosts 文件以配置目标服务器信息。
 
-3. 运行 cli.py 脚本开始操作：
+3. 运行 cli.py 脚本开始操作（group在hosts文件中配置）：
 ```bash
-python cli.py module group
+python cli.py {module} {group}
 ```
+
+4. 模块列表
+server_ops：服务器模块
 
 ## 主要模块
 
