@@ -2,7 +2,7 @@ from colorama import init, Fore, Style
 import datetime
 
 init(autoreset=True)
-LOG_FILE = "server_init.log"
+LOG_FILE = "server_ops.log"
 
 def log(msg):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

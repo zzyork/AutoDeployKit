@@ -39,7 +39,7 @@ def load_hosts(group, filename="hosts"):
 def main():
     if len(sys.argv) < 3:
         print("用法: python cli.py <module_name> <group>")
-        print("示例: python cli.py server_init webservers")
+        print("示例: python cli.py server_ops webservers")
         sys.exit(1)
 
     module_name = sys.argv[1]
@@ -48,8 +48,11 @@ def main():
     # 动态导入模块
     try:
         module = importlib.import_module(f"{module_name}.main")
-    except ImportError:
+    except ModuleNotFoundError:
         print(f"错误：找不到模块 {module_name}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"导入模块 {module_name}.main 出错: {e}")
         sys.exit(1)
 
     hosts = load_hosts(group)

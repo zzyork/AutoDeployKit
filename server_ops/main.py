@@ -1,10 +1,11 @@
-from server_init.hostname_ops import manage_hostname
-from server_init.yum_repos_ops import manage_yum_repos
-from server_init.pkg_ops import manage_packages
-from server_init.firewall_selinux_ops import manage_firewall_selinux
-from server_init.kernel_optimize_ops import kernel_optimize
-from server_init.disk_partition_ops import manage_disk_partition
-from server_init.system_optimize_ops import manage_system_optimize
+from server_ops.hostname_ops import manage_hostname
+from server_ops.yum_repos_ops import manage_yum_repos
+from server_ops.pkg_ops import manage_packages
+from server_ops.firewall_selinux_ops import manage_firewall_selinux
+from server_ops.kernel_optimize_ops import kernel_optimize
+from server_ops.disk_partition_ops import manage_disk_partition
+from server_ops.system_optimize_ops import manage_system_optimize
+from server_ops.openssl_upgrade import manage_security_patch
 
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
@@ -18,6 +19,7 @@ operations = {
     "5": ("内核参数调优", kernel_optimize),
     "6": ("磁盘分区与挂载", manage_disk_partition),
     "7": ("系统优化", manage_system_optimize),
+    "8": ("升级OpenSSL", manage_security_patch)
 }
 
 def run(clients):
