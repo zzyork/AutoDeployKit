@@ -2,18 +2,15 @@
 
 # 服务器初始化优化工具
 
-这是一个用于自动化执行服务器任务的 Python 工具集，适用于 Linux 系统管理。
-目前只写了一个服务器初始化功能，正在添加其他功能
+一个自动化服务器初始化与部署工具包，面向 DevOps 场景，支持自定义模块、组件安装与系统优化。
 
 ## 功能特性
 
-- **主机名管理**
-- **软件包安装与升级**
-- **磁盘分区与 LVM 管理**
-- **防火墙与 SELinux 配置**
-- **YUM 源管理**
-- **系统优化**
-- **SSH 远程连接与文件上传**
+- **一键执行多步服务器初始化操作**
+- **支持主机配置文件，批量管理主机**
+- **实时输出每个步骤的执行情况**
+- **可选项执行每一步操作，避免破坏生产环境**
+- **预集成常见依赖包与配置文件，提升部署效率**
 
 ## 使用方法
 
@@ -30,25 +27,36 @@ python cli.py {module} {group}
 ```
 
 4. 模块列表
-server_ops：服务器模块
+
+- server_ops：服务器管理模块
+- software_ops：软件管理模块
+
 
 ## 主要模块
 
-- `cli.py`：主命令行接口
-- `server_ops/`：操作模块，包含以下功能：
-  - `disk_partition_ops.py`：磁盘管理
-  - `firewall_selinux_ops.py`：防火墙与 SELinux 管理
-  - `hostname_ops.py`：主机名管理
-  - `kernel_optimize_ops.py`：内核参数优化
-  - `pkg_ops.py`：软件包管理
-  - `server_init.py`：初始化入口
-  - `system_optimize_ops.py`：系统优化
-  - `yum_repos_ops.py`：YUM 源管理
+```bash
+autodeploykit/
+├── cli.py                            # 项目入口 CLI，用于选择并执行任务
+├── hosts                             # 服务器连接信息配置
+├── requirements.txt                  # Python 依赖列表
+├── config/                           # 各类配置文件（如 vim、nginx、sysctl）
+├── packages/                         # 预下载的软件包（nginx、openssl 等）
+├── scripts/                          # 辅助脚本（如 get-pip.py）
+└── server_ops/                       # 各类服务器操作模块
+    ├── hostname_ops.py               # 修改主机名
+    ├── yum_repos_ops.py              # 配置 YUM 源
+    ├── openssl_upgrade.py            # 升级 OpenSSL
+    ├── disk_partition_ops.py         # 分区和挂载磁盘
+    ├── firewall_selinux_ops.py       # 配置防火墙和 SELinux
+    ├── kernel_optimize_ops.py        # 系统内核参数优化
+    ├── pkg_ops.py                    # 安装依赖包
+    ├── system_optimize_ops.py        # 其他系统优化操作
+    └── main.py                       # 调度各模块执行
+└── software_ops/                     # 各类服务器操作模块
+    ├── nginx_manager.py              # 安装与升级nginx
+    └── main.py                       # 调度各模块执行
 
-- `utils/`：工具模块，包含以下功能：
-  - `hash_utils.py`：文件哈希计算
-  - `output.py`：信息输出与日志记录
-  - `ssh_utils.py`：SSH 连接与命令执行
+```
 
 ## 许可证
 
