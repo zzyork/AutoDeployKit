@@ -1,34 +1,20 @@
-from .hostname_ops import manage_hostname
-from .yum_repos_ops import manage_yum_repos
-from .pkg_ops import manage_packages
-from .firewall_selinux_ops import manage_firewall_selinux
-from .kernel_optimize_ops import kernel_optimize
-from .disk_partition_ops import manage_disk_partition
-from .system_optimize_ops import manage_system_optimize
-from .openssl_upgrade import manage_security_patch
+from .nginx_manager import manage_nginx
 
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
 
 # 注册所有操作：编号 -> (描述, 函数)
 operations = {
-    "1": ("设置主机名", manage_hostname),
-    "2": ("管理 Yum 源", manage_yum_repos),
-    "3": ("管理软件包", manage_packages),
-    "4": ("配置防火墙和 SELinux", manage_firewall_selinux),
-    "5": ("内核参数调优", kernel_optimize),
-    "6": ("磁盘分区与挂载", manage_disk_partition),
-    "7": ("系统优化", manage_system_optimize),
-    "8": ("升级OpenSSL", manage_security_patch)
+    "1": ("Nginx管理", manage_nginx)
 }
 
 def run(clients):
     print(Style.BRIGHT + "-" * 40)
-    print_info("开始执行服务器初始化操作")
+    print_info("开始执行软件管理操作")
     print(Style.BRIGHT + "-" * 40)
 
     while True:
-        print(Style.BRIGHT + Fore.BLUE + "\n=== 服务器初始化菜单 ===")
+        print(Style.BRIGHT + Fore.BLUE + "\n=== 软件管理菜单 ===")
         for key, (desc, _) in operations.items():
             print(f"{key}. {desc}")
         print("0. 退出")
@@ -36,7 +22,7 @@ def run(clients):
         choice = input(Fore.MAGENTA + "请输入操作编号: ").strip()
 
         if choice == "0":
-            print_info("退出服务器初始化。")
+            print_info("退出软件管理操作。")
             break
 
         if choice not in operations:

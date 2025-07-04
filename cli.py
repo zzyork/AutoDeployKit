@@ -1,6 +1,7 @@
 import importlib
 import sys
 import configparser
+
 from utils.ssh_utils import ssh_connect
 
 def load_hosts(group, filename="hosts"):
@@ -59,7 +60,6 @@ def main():
 
     clients = []
     for entry in hosts:
-        # print(f"连接 {entry['host']} ...")
         try:
             client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"))
             clients.append((entry['host'], client))
