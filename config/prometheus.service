@@ -1,0 +1,17 @@
+[Unit]
+Description="prometheus"
+Documentation=https://prometheus.io/
+After=network.target
+
+[Service]
+Restart=on-failure
+ExecStart=/usr/local/prometheus/prometheus --config.file=/usr/local/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.enable-lifecycle --storage.tsdb.retention.time=90d
+Restart=on-failure
+SuccessExitStatus=0
+LimitNOFILE=65536
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=prometheus
+
+[Install]
+WantedBy=multi-user.target
