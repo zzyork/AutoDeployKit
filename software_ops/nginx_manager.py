@@ -35,8 +35,8 @@ def install_nginx(client):
         print_info("开始安装Nginx " + stable_version + "......\n")
 
         print_info("创建nginx用户")
-        _, err, status = run_command(client, "getent group nginx || groupadd nginx")
-        _, err, status = run_command(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
+        _, err, status = run_command_live(client, "getent group nginx || groupadd nginx")
+        _, err, status = run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
         if err:
             print_error("创建nginx用户失败，报错信息：\n" + err)
             return None
@@ -44,7 +44,7 @@ def install_nginx(client):
             print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        _, err, status = run_command(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
+        _, err, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
         if err:
             print_error("安装perl失败，报错信息：\n" + err)
             return None
@@ -76,17 +76,24 @@ def install_nginx(client):
                 break
 
         if cmd_status == 0:
-            _, current_version, _ = run_command(client, 'nginx -v')
+            _, current_version, _ = run_command_live(client, 'nginx -v')
             print_info("\n安装完成！\n当前nginx版本：" + current_version)
+            choice = input(Fore.MAGENTA + f"是否自动调整nginx.conf文件？(y/N): ").strip().lower()
+            if choice == "y":
+                local_path = os.path.join("config", "nginx.conf")
+                remote_path = install_path + "/conf/nginx.conf"
+                upload_file(client, local_path, remote_path)
+                cmds = [
+                    "sed -i 's/${install_path}/" + install_path + "/g' " + remote_path,
+                ]
+                print_info("nginx.conf文件调整完成")
             choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
             if choice == "y":
-                variables = {
-                    "install_path": install_path,
-                }
                 local_path = os.path.join("config", "nginx.service")
                 remote_path = "/etc/systemd/system/nginx.service"
-                upload_file_with_vars(client, local_path, remote_path, variables)
+                upload_file(client, local_path, remote_path)
                 cmds = [
+                    "sed -i 's/${install_path}/" + install_path + "/g' " + remote_path,
                     "systemctl daemon-reload",
                     "systemctl enable --now nginx",
                 ]

@@ -1,11 +1,13 @@
 from .nginx_manager import manage_nginx
+from .docker_manager import manage_docker
 
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
 
 # 注册所有操作：编号 -> (描述, 函数)
 operations = {
-    "1": ("Nginx管理", manage_nginx)
+    "1": ("Nginx管理", manage_nginx),
+    "2": ("Docker管理", manage_docker)
 }
 
 def run(clients):

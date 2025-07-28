@@ -31,9 +31,11 @@ def manage_packages(client):
     choice = input("是否进入自动执行模式？将升级 + 安装依赖 + 安装工具 (y/N): ").strip().lower()
 
     if choice == "y":
-        upgrade_packages(client)
-        install_base_deps(client)
-        install_base_tools(client)
+        run_command_live(client, "yum update -y")
+        deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet"
+        run_command_live(client, f"yum install -y {deps}")
+        tools = "htop iotop tar make ntpdate"
+        run_command_live(client, f"yum install -y {tools}")
         print_success("自动执行软件包操作已完成")
         return
 
