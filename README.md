@@ -19,17 +19,23 @@
 pip install -r requirements.txt
 ```
 
-2. 修改 hosts 文件以配置目标服务器信息。
+2. 添加hosts 文件以配置目标服务器信息。
+   ```tex
+    [group]
+    192.168.1.1 user=root password=123456 port=22 keyfile=/root/.ssh/id_rsa.pub
+   ```
+   密码和keyfile配置一个即可。
 
 3. 运行 cli.py 脚本开始操作（group在hosts文件中配置）：
 ```bash
 python cli.py {module} {group}
 ```
 
-4. 模块列表
+1. 模块列表
 
 - server_ops：服务器管理模块
 - software_ops：软件管理模块
+- monitor_ops：prometheus监控管理模块
 
 
 ## 主要模块

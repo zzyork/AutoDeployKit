@@ -1,15 +1,15 @@
 import paramiko
 import time
 
-def ssh_connect(host, user, password=None, key_file=None):
+def ssh_connect(host, user, password=None, key_file=None, port=22):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     if key_file:
         private_key = paramiko.RSAKey.from_private_key_file(key_file)
-        client.connect(hostname=host, username=user, pkey=private_key)
+        client.connect(hostname=host, username=user, pkey=private_key, port=port)
     else:
-        client.connect(hostname=host, username=user, password=password)
+        client.connect(hostname=host, username=user, password=password, port=port)
 
     return client
 

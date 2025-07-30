@@ -32,6 +32,7 @@ def load_hosts(group, filename="hosts"):
         hosts.append({
             "host": host,
             "user": params.get("user"),
+            "port": params.get("port"),
             "password": params.get("password"),
             "key_file": params.get("key_file")
         })
@@ -61,7 +62,7 @@ def main():
     clients = []
     for entry in hosts:
         try:
-            client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"))
+            client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"), entry.get("port"))
             clients.append((entry['host'], client))
         except Exception as e:
             print(f"连接失败 {entry['host']}: {e}")
