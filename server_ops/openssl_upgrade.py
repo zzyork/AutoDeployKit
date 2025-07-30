@@ -77,12 +77,8 @@ def upgrade_openssl_v3(client):
         print_info("升级 OpenSSL 到 " + latest_version)
 
         print_info("安装perl依赖")
-        _, err, status = run_command(client, 'yum -y install perl')
-        if err:
-            print_error("安装perl失败，报错信息：\n" + err)
-            return None
-        else:
-            print_success("perl安装完成。")
+        _, status = run_command_live(client, 'yum -y install perl')
+        print_success("perl安装完成。")
 
         print_info("开始下载源码包并编译安装")
         local_path = os.path.join("packages", "openssl-" + latest_version + ".tar.gz")
