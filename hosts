@@ -1,5 +1,0 @@
-[prometheus]
-192.168.2.125 user=root password=Qtkj@2025
-
-[mysqld-exporter]
-192.168.2.126 user=root password=Qtkj@2025
