@@ -28,18 +28,6 @@ def install_base_tools(client):
         print_warning("部分工具包可能安装失败")
 
 def manage_packages(client):
-    choice = input("是否进入自动执行模式？将升级 + 安装依赖 + 安装工具 (y/N): ").strip().lower()
-
-    if choice == "y":
-        run_command_live(client, "yum update -y")
-        deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet"
-        run_command_live(client, f"yum install -y {deps}")
-        tools = "htop iotop tar make ntpdate"
-        run_command_live(client, f"yum install -y {tools}")
-        print_success("自动执行软件包操作已完成")
-        return
-
-    # 手动模式
     while True:
         print("\n软件包管理选项：")
         print("1. 升级所有软件包")
