@@ -35,21 +35,13 @@ def install_nginx(client):
         print_info("开始安装Nginx " + stable_version + "......\n")
 
         print_info("创建nginx用户")
-        _, err, status = run_command_live(client, "getent group nginx || groupadd nginx")
-        _, err, status = run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
-        if err:
-            print_error("创建nginx用户失败，报错信息：\n" + err)
-            return None
-        else:
-            print_success("创建nginx用户完成。\n")
+        output, status = run_command_live(client, "getent group nginx || groupadd nginx")
+        output, status = run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
+        print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        _, err, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
-        if err:
-            print_error("安装perl失败，报错信息：\n" + err)
-            return None
-        else:
-            print_success("perl安装完成。\n")
+        output, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
+        print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
         local_path = os.path.join("packages", "nginx-" + stable_version + ".tar.gz")
@@ -61,8 +53,8 @@ def install_nginx(client):
         upload_file(client, local_path, remote_path)
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "cd /usr/local/src/nginx-" + stable_version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
-            "cd /usr/local/src/nginx-" + stable_version + "&& make && make install",
+            "cd /usr/local/src/nginx-" + stable_version + " && ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
+            "cd /usr/local/src/nginx-" + stable_version + " && make && make install",
             "ln -fs " + install_path + "/sbin/nginx /usr/bin/nginx",
             "mkdir -p " + install_path + "/conf/conf.d",
         ]
@@ -76,7 +68,7 @@ def install_nginx(client):
                 break
 
         if cmd_status == 0:
-            _, current_version, _ = run_command_live(client, 'nginx -v')
+            current_version, _ = run_command_live(client, 'nginx -v')
             print_info("\n安装完成！\n当前nginx版本：" + current_version)
             choice = input(Fore.MAGENTA + f"是否自动调整nginx.conf文件？(y/N): ").strip().lower()
             if choice == "y":
@@ -95,6 +87,7 @@ def install_nginx(client):
                 cmds = [
                     "sed -i 's/${install_path}/" + install_path + "/g' " + remote_path,
                     "systemctl daemon-reload",
+                    "mkdir -p /data/logs/nginx"
                     "systemctl enable --now nginx",
                 ]
                 print_info("systemd守护进程配置完成")
