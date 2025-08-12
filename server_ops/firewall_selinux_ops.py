@@ -30,6 +30,24 @@ def check_and_disable_firewalld(client):
 
 
 def disable_selinux(client):
+    # 检查 SELinux 当前状态
+    print_info("检查 SELinux 状态 ...")
+    output, err, _ = run_command(client, "getenforce")
+    selinux_status = output.strip().lower()
+
+    if err or selinux_status not in ["enforcing", "permissive", "disabled"]:
+        print_warning("无法确定 SELinux 状态，跳过处理")
+        return
+
+    print_info(f"当前 SELinux 状态：{selinux_status}")
+    if selinux_status == "disabled":
+        print_success("SELinux 已处于关闭状态")
+        return
+
+    choice = input(Fore.MAGENTA + "是否禁用 SELinux？(y/N): ").strip().lower()
+    if choice != "y":
+        print_warning("保留 SELinux 当前状态")
+        return
     print_info("正在设置 SELinux 为 disabled ...")
     run_command(client, "setenforce 0")
 
@@ -45,9 +63,4 @@ def manage_firewall_selinux(client):
     print(Fore.BLUE + "\n=== 防火墙与 SELinux 配置 ===")
 
     check_and_disable_firewalld(client)
-
-    choice = input(Fore.MAGENTA + "\n是否禁用 SELinux？(y/N): ").strip().lower()
-    if choice == "y":
-        disable_selinux(client)
-    else:
-        print_warning("SELinux 状态未更改")
+    disable_selinux(client)
