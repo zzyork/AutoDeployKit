@@ -15,11 +15,33 @@ def _connect_with_auth(client, hostname, username, password=None, key_file=None,
     connect_kwargs.update(kwargs)
 
     if key_file:
-        connect_kwargs["pkey"] = paramiko.RSAKey.from_private_key_file(key_file)
+        connect_kwargs["pkey"] = _load_private_key(key_file)
     else:
         connect_kwargs["password"] = password
 
     client.connect(**connect_kwargs)
+
+
+def _load_private_key(key_file):
+    """Try loading different key types (ed25519/ecdsa/rsa/dss)."""
+    loaders = (
+        paramiko.Ed25519Key,
+        paramiko.ECDSAKey,
+        paramiko.RSAKey,
+        paramiko.DSSKey,
+    )
+    last_exc = None
+    for loader in loaders:
+        try:
+            return loader.from_private_key_file(key_file)
+        except (OSError, paramiko.SSHException) as exc:
+            last_exc = exc
+            continue
+
+    # If nothing worked, bubble up the last error to aid debugging.
+    if last_exc:
+        raise last_exc
+    raise paramiko.SSHException("Unable to load private key: unknown error")
 
 
 def ssh_connect(
@@ -37,7 +59,10 @@ def ssh_connect(
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    if proxy:
+    # 只有同时提供代理地址和至少一种认证方式时才走代理隧道
+    use_proxy = proxy and (proxy_password or proxy_keyfile or proxy_user)
+
+    if use_proxy:
         # 先连接代理机，再通过 direct-tcpip 打开到目标主机的隧道
         proxy_client = paramiko.SSHClient()
         proxy_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -95,12 +120,14 @@ def close_ssh_client(client):
         if proxy_client:
             proxy_client.close()
 
+
 def run_command(client, command):
     stdin, stdout, stderr = client.exec_command(command)
     out = stdout.read().decode()
     err = stderr.read().decode()
     status = stdout.channel.recv_exit_status()
     return out, err, status
+
 
 def run_command_live(client, command):
     print(f"\n>> 正在远程执行: {command}\n")
@@ -113,14 +140,14 @@ def run_command_live(client, command):
     output = ""
     while True:
         if channel.recv_ready():
-            data = channel.recv(4096).decode('utf-8', errors='ignore')
+            data = channel.recv(4096).decode("utf-8", errors="ignore")
             output += data
-            print(data, end='')  # 实时打印
+            print(data, end="")  # 实时打印
         if channel.exit_status_ready():
             if channel.recv_ready():
-                data = channel.recv(4096).decode('utf-8', errors='ignore')
+                data = channel.recv(4096).decode("utf-8", errors="ignore")
                 output += data
-                print(data, end='')
+                print(data, end="")
             break
         time.sleep(0.1)
 

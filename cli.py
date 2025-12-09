@@ -39,6 +39,7 @@ def load_hosts(group, filename="hosts"):
             "port": params.get("port"),
             "password": params.get("password"),
             "key_file": params.get("key_file"),
+            "vip": params.get("vip"),
             "proxy": params.get("proxy"),
             "proxy_user": params.get("proxy_user"),
             "proxy_password": params.get("proxy_password"),
@@ -71,7 +72,8 @@ def main():
     clients = []
     for entry in hosts:
         try:
-            client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"), entry.get("port"), entry.get("proxy"), entry.get("proxy_user"), entry.get("proxy_password"), entry.get("proxy_keyfile"), entry.get("proxy_port"))
+            target_host = entry.get("vip") or entry['host']
+            client = ssh_connect(target_host, entry['user'], entry.get("password"), entry.get("key_file"), entry.get("port"), entry.get("proxy"), entry.get("proxy_user"), entry.get("proxy_password"), entry.get("proxy_keyfile"), entry.get("proxy_port"))
             clients.append((entry['host'], client))
         except Exception as e:
             print(f"连接失败 {entry['host']}: {e}")
