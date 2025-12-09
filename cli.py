@@ -2,12 +2,12 @@ import importlib
 import sys
 import configparser
 
-from utils.ssh_utils import ssh_connect
+from utils.ssh_utils import close_ssh_client, ssh_connect
 
 def load_hosts(group, filename="hosts"):
     config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",))
     config.optionxform = str
-    read_files = config.read(filename)
+    read_files = config.read(filename, encoding="utf-8")
     if not read_files:
         print(f"错误：未找到hosts文件：{filename}")
         sys.exit(1)
@@ -24,7 +24,11 @@ def load_hosts(group, filename="hosts"):
             try:
                 for item in line[1].split():
                     k, v = item.split("=", 1)
-                    params[k] = v
+                    v = v.strip('"').strip("'")
+                    if k == "keyfile":
+                        params["key_file"] = v
+                    else:
+                        params[k] = v
             except Exception:
                 print(f"解析参数错误，跳过该条目: {line}")
                 continue
@@ -34,12 +38,17 @@ def load_hosts(group, filename="hosts"):
             "user": params.get("user"),
             "port": params.get("port"),
             "password": params.get("password"),
-            "key_file": params.get("key_file")
+            "key_file": params.get("key_file"),
+            "proxy": params.get("proxy"),
+            "proxy_user": params.get("proxy_user"),
+            "proxy_password": params.get("proxy_password"),
+            "proxy_keyfile": params.get("proxy_keyfile"),
+            "proxy_port": params.get("proxy_port"),
         })
     return hosts
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) != 3:
         print("用法: python cli.py <module_name> <group>")
         print("示例: python cli.py server_ops webservers")
         sys.exit(1)
@@ -62,7 +71,7 @@ def main():
     clients = []
     for entry in hosts:
         try:
-            client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"), entry.get("port"))
+            client = ssh_connect(entry['host'], entry['user'], entry.get("password"), entry.get("key_file"), entry.get("port"), entry.get("proxy"), entry.get("proxy_user"), entry.get("proxy_password"), entry.get("proxy_keyfile"), entry.get("proxy_port"))
             clients.append((entry['host'], client))
         except Exception as e:
             print(f"连接失败 {entry['host']}: {e}")
@@ -71,12 +80,11 @@ def main():
         print("无可用连接，程序退出。")
         sys.exit(1)
 
-    # 将多个连接交给模块统一处理
     try:
         module.run(clients)
     finally:
         for _, client in clients:
-            client.close()
+            close_ssh_client(client)
 
 if __name__ == "__main__":
     main()
