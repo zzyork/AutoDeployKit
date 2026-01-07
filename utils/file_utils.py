@@ -1,37 +1,186 @@
 import os
 import re
+import sys
 import tempfile
+import time
 from string import Template
 
 import requests
+from utils.output import print_error, print_info
 
 
 def download_file(url, dest):
     if os.path.exists(dest):
+        print_info(f"文件已存在: {dest}")
         return True
+
+    # 确保目标目录存在
+    dest_dir = os.path.dirname(dest)
+    if dest_dir and not os.path.exists(dest_dir):
+        try:
+            os.makedirs(dest_dir, exist_ok=True)
+            print_info(f"创建目录: {dest_dir}")
+        except Exception as e:
+            print_error(f"无法创建目录 {dest_dir}: {e}")
+            return False
 
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
 
+    r = None
     try:
-        r = requests.get(url, headers=headers, stream=True)
+        print_info(f"开始下载: {url}")
+        r = requests.get(url, headers=headers, stream=True, timeout=30)
         r.raise_for_status()
+
+        total_size = r.headers.get("Content-Length")
+        try:
+            total_size = int(total_size) if total_size is not None else None
+        except ValueError:
+            total_size = None
+
+        downloaded = 0
+        last_print_ts = 0.0
+        start_ts = time.time()
+        filename = os.path.basename(dest) or dest
 
         with open(dest, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+                if not chunk:
+                    continue
+                f.write(chunk)
+                downloaded += len(chunk)
+
+                now_ts = time.time()
+                if now_ts - last_print_ts >= 0.2:
+                    elapsed = max(now_ts - start_ts, 1e-6)
+                    speed = downloaded / elapsed
+                    if total_size and total_size > 0:
+                        percent = min(downloaded * 100.0 / total_size, 100.0)
+                        sys.stdout.write(
+                            f"\rDownloading {filename}: {percent:6.2f}% "
+                            f"({downloaded / 1024 / 1024:.2f}/{total_size / 1024 / 1024:.2f} MB) "
+                            f"{speed / 1024 / 1024:.2f} MB/s"
+                        )
+                    else:
+                        sys.stdout.write(
+                            f"\rDownloading {filename}: {downloaded / 1024 / 1024:.2f} MB "
+                            f"{speed / 1024 / 1024:.2f} MB/s"
+                        )
+                    sys.stdout.flush()
+                    last_print_ts = now_ts
+
+        end_ts = time.time()
+        elapsed = max(end_ts - start_ts, 1e-6)
+        speed = downloaded / elapsed
+        if total_size and total_size > 0:
+            sys.stdout.write(
+                f"\rDownloading {filename}: {100.00:6.2f}% "
+                f"({downloaded / 1024 / 1024:.2f}/{total_size / 1024 / 1024:.2f} MB) "
+                f"{speed / 1024 / 1024:.2f} MB/s\n"
+            )
+        else:
+            sys.stdout.write(
+                f"\rDownloading {filename}: {downloaded / 1024 / 1024:.2f} MB "
+                f"{speed / 1024 / 1024:.2f} MB/s\n"
+            )
+        sys.stdout.flush()
+        
+        print_info(f"下载完成: {dest} ({downloaded / 1024 / 1024:.2f} MB)")
         return True
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"网络错误: {e}")
+    except IOError as e:
+        raise RuntimeError(f"文件写入错误: {e}")
     except Exception as e:
-        return False
+        raise RuntimeError(f"未知错误: {e}")
+    finally:
+        try:
+            if r is not None:
+                r.close()
+        except Exception:
+            pass
 
 def upload_file(client, local_path, remote_path):
-    sftp = client.open_sftp()
-    sftp.put(local_path, remote_path)
-    sftp.close()
+    """上传文件到远程服务器，显示传输进度"""
+    if not os.path.exists(local_path):
+        print_error(f"本地文件不存在: {local_path}")
+        raise RuntimeError(f"本地文件不存在: {local_path}")
+    
+    file_size = os.path.getsize(local_path)
+    filename = os.path.basename(local_path)
+    
+    # 检查远程文件是否已存在
+    try:
+        sftp = client.open_sftp()
+        try:
+            remote_stat = sftp.stat(remote_path)
+            remote_size = remote_stat.st_size
+            
+            if remote_size == file_size:
+                sftp.close()
+                print_info(f"远程文件已存在且大小相同，跳过上传: {remote_path}")
+                return
+                
+        except FileNotFoundError:
+            # 远程文件不存在，需要上传
+            pass
+        finally:
+            sftp.close()
+    except Exception as e:
+        print_error(f"检查远程文件失败: {e}")
+        # 继续上传流程
+    
+    print_info(f"开始上传: {filename} ({file_size / 1024 / 1024:.2f} MB) -> {remote_path}")
+    
+    uploaded = 0
+    last_print_ts = 0.0
+    start_ts = time.time()
+    
+    def progress_callback(transferred, total):
+        nonlocal uploaded, last_print_ts
+        uploaded = transferred
+        now_ts = time.time()
+        
+        if now_ts - last_print_ts >= 0.2:
+            elapsed = max(now_ts - start_ts, 1e-6)
+            speed = transferred / elapsed
+            percent = (transferred * 100.0 / total) if total > 0 else 0
+            
+            sys.stdout.write(
+                f"\rUploading {filename}: {percent:6.2f}% "
+                f"({transferred / 1024 / 1024:.2f}/{total / 1024 / 1024:.2f} MB) "
+                f"{speed / 1024 / 1024:.2f} MB/s"
+            )
+            sys.stdout.flush()
+            last_print_ts = now_ts
+    
+    try:
+        sftp = client.open_sftp()
+        sftp.put(local_path, remote_path, callback=progress_callback)
+        sftp.close()
+        
+        # 显示最终进度
+        end_ts = time.time()
+        elapsed = max(end_ts - start_ts, 1e-6)
+        speed = uploaded / elapsed
+        
+        sys.stdout.write(
+            f"\rUploading {filename}: {100.00:6.2f}% "
+            f"({uploaded / 1024 / 1024:.2f}/{file_size / 1024 / 1024:.2f} MB) "
+            f"{speed / 1024 / 1024:.2f} MB/s\n"
+        )
+        sys.stdout.flush()
+        
+        print_info(f"上传完成: {remote_path}")
+        
+    except Exception as e:
+        print_error(f"上传失败: {e}")
+        raise RuntimeError(f"上传失败: {e}")
 
 def upload_file_with_vars(client, local_path, remote_path, variables: dict):
+    """读取模板文件，替换变量后上传到远程服务器，显示传输进度"""
     # 1. 读取模板文件内容
     with open(local_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -46,13 +195,87 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
         tmpfile_path = tmpfile.name
 
     try:
-        # 4. 上传临时文件
+        # 4. 上传临时文件（使用带进度显示的upload_file）
+        # 直接调用SFTP上传以避免递归调用
+        if not os.path.exists(tmpfile_path):
+            print_error(f"临时文件不存在: {tmpfile_path}")
+            raise RuntimeError(f"临时文件不存在: {tmpfile_path}")
+        
+        file_size = os.path.getsize(tmpfile_path)
+        filename = os.path.basename(remote_path)
+        
+        # 检查远程文件是否已存在
+        try:
+            sftp = client.open_sftp()
+            try:
+                remote_stat = sftp.stat(remote_path)
+                remote_size = remote_stat.st_size
+                
+                if remote_size == file_size:
+                    sftp.close()
+                    print_info(f"远程配置文件已存在且大小相同，跳过上传: {remote_path}")
+                    return
+                    
+            except FileNotFoundError:
+                # 远程文件不存在，需要上传
+                pass
+            finally:
+                sftp.close()
+        except Exception as e:
+            print_error(f"检查远程配置文件失败: {e}")
+            # 继续上传流程
+        
+        print_info(f"开始上传配置文件: {filename} ({file_size / 1024:.2f} KB) -> {remote_path}")
+        
+        uploaded = 0
+        last_print_ts = 0.0
+        start_ts = time.time()
+        
+        def progress_callback(transferred, total):
+            nonlocal uploaded, last_print_ts
+            uploaded = transferred
+            now_ts = time.time()
+            
+            if now_ts - last_print_ts >= 0.2:
+                elapsed = max(now_ts - start_ts, 1e-6)
+                speed = transferred / elapsed
+                percent = (transferred * 100.0 / total) if total > 0 else 0
+                
+                sys.stdout.write(
+                    f"\rUploading {filename}: {percent:6.2f}% "
+                    f"({transferred / 1024:.2f}/{total / 1024:.2f} KB) "
+                    f"{speed / 1024:.2f} KB/s"
+                )
+                sys.stdout.flush()
+                last_print_ts = now_ts
+        
         sftp = client.open_sftp()
-        sftp.put(tmpfile_path, remote_path)
+        sftp.put(tmpfile_path, remote_path, callback=progress_callback)
         sftp.close()
+        
+        # 显示最终进度
+        end_ts = time.time()
+        elapsed = max(end_ts - start_ts, 1e-6)
+        speed = uploaded / elapsed
+        
+        sys.stdout.write(
+            f"\rUploading {filename}: {100.00:6.2f}% "
+            f"({uploaded / 1024:.2f}/{file_size / 1024:.2f} KB) "
+            f"{speed / 1024:.2f} KB/s\n"
+        )
+        sys.stdout.flush()
+        
+        print_info(f"配置文件上传完成: {remote_path}")
+        
+    except Exception as e:
+        print_error(f"配置文件上传失败: {e}")
+        raise RuntimeError(f"配置文件上传失败: {e}")
     finally:
         # 5. 清理临时文件
-        os.remove(tmpfile_path)
+        try:
+            os.remove(tmpfile_path)
+        except Exception:
+            pass
 
 def get_stable_version_from_github(url, prefix=None):
     tags = []

@@ -1,0 +1,17 @@
+# Sample hosts file for AutoDeployKit
+# This file is gitignored for security reasons
+# Format: [group_name]
+#         host_ip user=username password=xxx port=22 keyfile="path" vip=virtual_ip proxy=proxy_host proxy_user=xxx proxy_password=xxx proxy_port=22
+
+[webservers]
+192.168.1.10 user=root password=passw0rd port=22
+192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
+192.168.1.12 user=admin password=admin123 port=2222 vip=192.168.1.100
+
+[dbservers]
+10.0.0.5 user=root keyfile="/path/to/db_key" port=22
+10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
+
+[monitoring]
+192.168.1.20 user=centos password=centos123 port=22
+192.168.1.21 user=centos keyfile="~/.ssh/monitor_key" port=22

@@ -4,7 +4,13 @@ import configparser
 
 from utils.ssh_utils import close_ssh_client, ssh_connect
 
-def load_hosts(group, filename="hosts"):
+def parse_host_pattern(pattern, filename="hosts"):
+    """
+    Parse host pattern supporting:
+    - IP addresses: 192.168.1.10, 192.168.1.10,192.168.1.11
+    - Group names: webservers
+    - All hosts: all
+    """
     config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",))
     config.optionxform = str
     read_files = config.read(filename, encoding="utf-8")
@@ -12,17 +18,62 @@ def load_hosts(group, filename="hosts"):
         print(f"错误：未找到hosts文件：{filename}")
         sys.exit(1)
 
-    if group not in config.sections():
-        print(f"错误：组名 '{group}' 不存在于 hosts 文件中")
+    # Handle 'all' pattern
+    if pattern == "all":
+        hosts = []
+        for section in config.sections():
+            for line in config.items(section):
+                hosts.append((section, line))
+        return hosts
+
+    # Check if it's a group name
+    if pattern in config.sections():
+        return [(pattern, line) for line in config.items(pattern)]
+
+    # Handle IP addresses (comma-separated)
+    ip_list = [ip.strip() for ip in pattern.split(",") if ip.strip()]
+    hosts = []
+    
+    for ip in ip_list:
+        found = False
+        for section in config.sections():
+            for line in config.items(section):
+                if line[0] == ip:
+                    hosts.append((section, line))
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            print(f"警告：IP地址 '{ip}' 在hosts文件中未找到")
+    
+    return hosts
+
+def load_hosts(pattern, filename="hosts"):
+    """
+    Load hosts based on pattern (IP, group name, or 'all')
+    """
+    host_entries = parse_host_pattern(pattern, filename)
+    
+    if not host_entries:
+        print(f"错误：未找到匹配的主机模式：{pattern}")
         sys.exit(1)
 
     hosts = []
-    for line in config.items(group):
+    for section, line in host_entries:
         host = line[0]
         params = {}
         if line[1]:
             try:
-                for item in line[1].split():
+                # Handle the special case where keyfile might be concatenated without '='
+                param_string = line[1]
+                # Fix cases where keyfile is concatenated without '='
+                param_string = param_string.replace('keyfile"', 'keyfile="')
+                param_string = param_string.replace('proxy_keyfile"', 'proxy_keyfile="')
+                
+                for item in param_string.split():
+                    if '=' not in item:
+                        continue  # Skip malformed items
                     k, v = item.split("=", 1)
                     v = v.strip('"').strip("'")
                     if k == "keyfile":
@@ -45,19 +96,33 @@ def load_hosts(group, filename="hosts"):
             "proxy_password": params.get("proxy_password"),
             "proxy_keyfile": params.get("proxy_keyfile"),
             "proxy_port": params.get("proxy_port"),
+            "group": section  # Add group information
         })
     return hosts
 
 def main():
-    if len(sys.argv) != 3:
-        print("用法: python cli.py <module_name> <group>")
-        print("示例: python cli.py server_ops webservers")
+    args = sys.argv[1:]
+    dry_run = False
+    if "--dry-run" in args:
+        dry_run = True
+        args.remove("--dry-run")
+
+    if len(args) != 2:
+        print("用法: python cli.py <module_name> <host_pattern> [--dry-run]")
+        print("示例:")
+        print("  python cli.py server_ops webservers --dry-run")
+        print("  python cli.py server_ops 192.168.1.10")
+        print("  python cli.py server_ops 192.168.1.10,192.168.1.11")
+        print("  python cli.py server_ops all")
+        print("\n<host_pattern> 支持:")
+        print("  - 组名: webservers, dbservers")
+        print("  - IP地址: 192.168.1.10")
+        print("  - 多个IP: 192.168.1.10,192.168.1.11")
+        print("  - 所有主机: all")
         sys.exit(1)
 
-    module_name = sys.argv[1]
-    group = sys.argv[2]
+    module_name, host_pattern = args[0], args[1]
 
-    # 动态导入模块
     try:
         module = importlib.import_module(f"{module_name}.main")
     except ModuleNotFoundError:
@@ -67,7 +132,7 @@ def main():
         print(f"导入模块 {module_name}.main 出错: {e}")
         sys.exit(1)
 
-    hosts = load_hosts(group)
+    hosts = load_hosts(host_pattern)
 
     clients = []
     for entry in hosts:
@@ -83,7 +148,10 @@ def main():
         sys.exit(1)
 
     try:
-        module.run(clients)
+        try:
+            module.run(clients, dry_run=dry_run)
+        except TypeError:
+            module.run(clients)
     finally:
         for _, client in clients:
             close_ssh_client(client)

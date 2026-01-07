@@ -21,7 +21,12 @@ def install_prometheus(client):
         url = "https://github.com/prometheus/prometheus/releases/download/v" + stable_version + "/prometheus-" + stable_version + ".linux-amd64.tar.gz"
         remote_path = "/usr/local/src/prometheus-" + stable_version + ".linux-amd64.tar.gz"
 
-        download_file(url, local_path)
+        try:
+            download_file(url, local_path)
+        except RuntimeError as e:
+            print_error(f"下载失败，中止安装: {e}")
+            print_warning("返回上一级菜单\n")
+            return None
         upload_file(client, local_path, remote_path)
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",

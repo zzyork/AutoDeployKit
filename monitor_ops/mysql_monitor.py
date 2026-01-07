@@ -23,7 +23,12 @@ def install_mysqld_exporter(client):
         print(url)
         print(remote_path)
 
-        download_file(url, local_path)
+        try:
+            download_file(url, local_path)
+        except RuntimeError as e:
+            print_error(f"下载失败，中止安装: {e}")
+            print_warning("返回上一级菜单\n")
+            return None
         upload_file(client, local_path, remote_path)
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",

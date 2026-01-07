@@ -47,7 +47,7 @@ def check_and_optimize_limits(client):
 def check_and_optimize_sysctl(client):
     local_md5 = get_local_md5(DEFAULT_SYSCTL_LOCAL)
     remote_md5 = get_remote_md5(client, "/etc/sysctl.conf")
-    print_info("检查 /etc/sysctl.conf 系统参数配置 ...")
+    print_info("\n检查 /etc/sysctl.conf 系统参数配置 ...")
 
     # 读取本地模板
     local_path = os.path.join("config", "sysctl.conf")

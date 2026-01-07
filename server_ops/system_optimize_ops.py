@@ -47,7 +47,7 @@ def configure_ntpdate(client):
 
 
 def optimize_vimrc(client):
-    print_info("优化 Vim 配置文件 ~/.vimrc ...")
+    print_info("\n优化 Vim 配置文件 ~/.vimrc ...")
 
     # 明确远程绝对路径，假设用 root 用户
     remote_vimrc_path = "/root/.vimrc"

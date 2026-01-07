@@ -83,7 +83,12 @@ def upgrade_openssl_v3(client):
         print_info("开始下载源码包并编译安装")
         local_path = os.path.join("packages", "openssl-" + latest_version + ".tar.gz")
         url = "https://github.com/openssl/openssl/releases/download/openssl-" + latest_version + "/openssl-" + latest_version + ".tar.gz"
-        download_file(url, local_path)
+        try:
+            download_file(url, local_path)
+        except RuntimeError as e:
+            print_error(f"下载失败，中止升级: {e}")
+            print_warning("返回上一级菜单\n")
+            return None
 
         remote_path = "/usr/local/src/openssl-" + latest_version + ".tar.gz"
         upload_file(client, local_path, remote_path)
@@ -134,20 +139,23 @@ def manage_security_patch(client):
 
     while True:
         print("=== 安全补丁升级操作 ===")
-        # print("1. 升级 OpenSSL 到 1.1.1w")
-        print("1. 升级 OpenSSL 到 v3.0.* 最新发行版")
-        # print("2. 修复 libssl.so.3 缺失问题")
-        # print("3. 安装 perl-CPAN（解决 IPC/Cmd.pm 缺失）")
+        if current_version.startswith("OpenSSL 1.1.1"):
+            print("1. 升级 OpenSSL 到 1.1.1w")
+        elif current_version.startswith("OpenSSL 3.0"):
+            print("1. 升级 OpenSSL 到 v3.0.* 最新发行版")
+        print("2. 修复 libssl.so.3 缺失问题")
+        print("3. 安装 perl-CPAN（解决 IPC/Cmd.pm 缺失）")
         print("0. 返回/跳过")
         choice = input("请选择操作编号: ").strip()
         if choice == "1":
-        #     upgrade_openssl_1_1_1(client)
-        # elif choice == "1":
-            upgrade_openssl_v3(client)
-        # elif choice == "2":
-        #     fix_libssl_so3(client)
-        # elif choice == "3":
-        #     install_perl_cpan(client)
+            if current_version.startswith("OpenSSL 1.1.1"):
+                upgrade_openssl_1_1_1(client)
+            elif current_version.startswith("OpenSSL 3.0"):
+                upgrade_openssl_v3(client)
+        elif choice == "2":
+            fix_libssl_so3(client)
+        elif choice == "3":
+            install_perl_cpan(client)
         elif choice == "0":
             break
         else:

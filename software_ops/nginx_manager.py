@@ -49,8 +49,23 @@ def install_nginx(client):
         remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
         install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
 
-        download_file(url, local_path)
-        upload_file(client, local_path, remote_path)
+        # 优先使用服务器wget下载
+        print_info(f"尝试使用服务器wget下载 {url}")
+        wget_cmd = f"cd /usr/local/src && wget {url}"
+        output, wget_status = run_command_live(client, wget_cmd)
+        
+        if wget_status == 0:
+            print_success("服务器wget下载成功")
+        else:
+            print_warning("服务器wget下载失败，尝试本地上传")
+            try:
+                download_file(url, local_path)
+                upload_file(client, local_path, remote_path)
+                print_success("本地上传成功")
+            except RuntimeError as e:
+                print_error(f"本地上传也失败，中止安装: {e}")
+                print_warning("返回上一级菜单\n")
+                return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
             "cd /usr/local/src/nginx-" + stable_version + " && ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
@@ -75,22 +90,37 @@ def install_nginx(client):
                 local_path = os.path.join("config", "nginx.conf")
                 remote_path = install_path + "/conf/nginx.conf"
                 upload_file(client, local_path, remote_path)
-                cmds = [
-                    "sed -i 's/${install_path}/" + install_path + "/g' " + remote_path,
-                ]
-                print_info("nginx.conf文件调整完成")
+                sed_cmd = "sed -i s#'${install_path}'#'" + install_path + "'#g " + remote_path
+                output, sed_status = run_command_live(client, sed_cmd)
+                if sed_status == 0:
+                    print_info("nginx.conf文件调整完成")
+                else:
+                    print_error("nginx.conf文件调整失败")
             choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
             if choice == "y":
                 local_path = os.path.join("config", "nginx.service")
                 remote_path = "/etc/systemd/system/nginx.service"
                 upload_file(client, local_path, remote_path)
-                cmds = [
-                    "sed -i 's/${install_path}/" + install_path + "/g' " + remote_path,
+                sed_cmd = "sed -i s#'${install_path}'#'" + install_path + "'#g " + remote_path
+                output, sed_status = run_command_live(client, sed_cmd)
+                if sed_status == 0:
+                    print_info("nginx.service文件调整完成")
+                else:
+                    print_error("nginx.service文件调整失败")
+                
+                # 执行systemd相关命令
+                systemd_cmds = [
                     "systemctl daemon-reload",
-                    "mkdir -p /data/logs/nginx"
+                    "mkdir -p /data/logs/nginx",
                     "systemctl enable --now nginx",
                 ]
-                print_info("systemd守护进程配置完成")
+                for cmd in systemd_cmds:
+                    output, cmd_status = run_command_live(client, cmd)
+                    if cmd_status != 0:
+                        print_error(f"systemd命令执行失败: {cmd}")
+                        break
+                else:
+                    print_info("systemd守护进程配置完成")
 
     else:
         print_warning(f"返回上一级")
@@ -107,8 +137,23 @@ def upgrade_nginx(client):
     remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
     install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
 
-    download_file(url, local_path)
-    upload_file(client, local_path, remote_path)
+    # 优先使用服务器wget下载
+    print_info(f"尝试使用服务器wget下载 {url}")
+    wget_cmd = f"cd /usr/local/src && wget {url}"
+    output, wget_status = run_command_live(client, wget_cmd)
+    
+    if wget_status == 0:
+        print_success("服务器wget下载成功")
+    else:
+        print_warning("服务器wget下载失败，尝试本地上传")
+        try:
+            download_file(url, local_path)
+            upload_file(client, local_path, remote_path)
+            print_success("本地上传成功")
+        except RuntimeError as e:
+            print_error(f"本地上传也失败，中止升级: {e}")
+            print_warning("返回上一级菜单\n")
+            return None
     cmds = [
         "tar zxf " + remote_path + " -C /usr/local/src/",
         "cd /usr/local/src/nginx-" + stable_version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",

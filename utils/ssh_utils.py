@@ -122,7 +122,10 @@ def close_ssh_client(client):
 
 
 def run_command(client, command):
-    stdin, stdout, stderr = client.exec_command(command)
+    """执行远程命令，加载环境变量"""
+    # 先加载环境变量，再执行命令
+    full_command = f"source /etc/profile; {command}"
+    stdin, stdout, stderr = client.exec_command(full_command)
     out = stdout.read().decode()
     err = stderr.read().decode()
     status = stdout.channel.recv_exit_status()
@@ -130,12 +133,15 @@ def run_command(client, command):
 
 
 def run_command_live(client, command):
+    """执行远程命令并实时显示输出，加载环境变量"""
+    # 先加载环境变量，再执行命令
+    full_command = f"source /etc/profile; {command}"
     print(f"\n>> 正在远程执行: {command}\n")
 
     transport = client.get_transport()
     channel = transport.open_session()
     channel.get_pty()  # 获取伪终端，保证输出格式正常
-    channel.exec_command(command)
+    channel.exec_command(full_command)
 
     output = ""
     while True:
