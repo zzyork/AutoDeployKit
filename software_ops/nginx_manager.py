@@ -218,7 +218,7 @@ def backup_nginx(client):
     
     current_version = output.strip()
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir = f"/tmp/nginx_backup_{current_version}_{timestamp}"
+    backup_dir = f"/data/backups/nginx_backup_{current_version}_{timestamp}"
     
     print_info(f"创建备份目录: {backup_dir}")
     
@@ -305,7 +305,7 @@ def rollback_nginx(client):
     print_info("查找可用的nginx备份...")
     
     # 查找备份目录
-    output, error, status = run_command(client, "find /tmp -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
+    output, error, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
     if status != 0 or not output.strip():
         print_warning("未找到任何nginx备份")
         return
@@ -422,7 +422,7 @@ def rollback_nginx(client):
 def list_nginx_backups(client):
     print_info("查找nginx备份...")
     
-    output, error, status = run_command(client, "find /tmp -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
+    output, error, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
     if status != 0 or not output.strip():
         print_warning("未找到任何nginx备份")
         return
