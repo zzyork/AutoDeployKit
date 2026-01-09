@@ -34,21 +34,18 @@ def install_mysql8(client):
     print_info("Mysql最新发行版为：" + stable_version)
     choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
     if choice == "y":
-        # 提示输入MySQL安装目录
         default_install_path = "/usr/local/mysql" + '.'.join(stable_version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入MySQL安装目录 (默认: {default_install_path}): ").strip()
         if not install_path:
             install_path = default_install_path
         print_info("MySQL将安装到: " + install_path + "\n")
         
-        # 提示输入数据目录
         default_data_dir = "/data/mysql"
         data_dir = input(Fore.MAGENTA + f"请输入MySQL数据目录 (默认: {default_data_dir}): ").strip()
         if not data_dir:
             data_dir = default_data_dir
         print_info("MySQL数据目录: " + data_dir)
         
-        # 提示输入日志目录
         default_log_dir = "/var/log/mysql"
         log_dir = input(Fore.MAGENTA + f"请输入MySQL日志目录 (默认: {default_log_dir}): ").strip()
         if not log_dir:
@@ -101,51 +98,59 @@ def install_mysql8(client):
             
             choice = input(Fore.MAGENTA + f"是否自动配置my.cnf文件？(y/N): ").strip().lower()
             if choice == "y":
-                local_path = os.path.join("config", "my.cnf")
+                print_success("正在配置my.cnf文件...")
+                local_path = os.path.join("config", "mysql", "my.cnf")
                 remote_path = "/etc/my.cnf"
                 upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_DATA_DIR': data_dir, 'MYSQL_LOG_DIR': log_dir})
                 cmd = "chown mysql:mysql /etc/my.cnf"
                 run_command_live(client, cmd)
-                print_info("my.cnf文件调整完成，建议首次初始化之前根据实际需求修改my.cnf文件！！！\n\n")
+                print_success("✓ my.cnf文件配置完成")
+                print_warning("⚠ 建议首次初始化之前根据实际需求修改my.cnf文件！")
             else:
-                print_warning("返回上一级")
+                print_warning("→ 已跳过my.cnf文件配置")
 
             choice = input(Fore.MAGENTA + f"是否初始化MySQL服务？(y/N): ").strip().lower()
-            # TODO: 优化输出选择信息之后的提示信息颜色显示
             if choice == "y":
+                print_success("正在初始化MySQL服务，请稍候...")
                 run_command_live(client, install_path + "/bin/mysqld --initialize --user=mysql")
-                print_info("MySQL服务初始化完成\n\n")
+                print_success("✓ MySQL服务初始化完成")
+                print_info("注意: 初始化完成后会生成临时密码，请查看日志文件获取密码")
+                print_info("日志位置: " + data_dir + "/error.log\n")
             else:
-                print_warning("返回上一级")
+                print_warning("→ 已跳过MySQL服务初始化")
 
             choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
             if choice == "y":
-                local_path = os.path.join("config", "mysqld.service")
+                print_success("正在配置systemd守护进程...")
+                local_path = os.path.join("config", "mysql", "mysqld.service")
                 remote_path = "/etc/systemd/system/mysqld.service"
                 upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_DATA_DIR': data_dir, 'MYSQL_LOG_DIR': log_dir})
                 run_command_live(client, "systemctl daemon-reload")
-                print_info("systemd守护进程配置完成\n\n")
+                print_success("✓ systemd守护进程配置完成")
             else:
-                print_warning("返回上一级")
+                print_warning("→ 已跳过systemd守护进程配置")
 
             choice = input(Fore.MAGENTA + f"是否为MySQL服务配置开机自启动？(y/N): ").strip().lower()
             if choice == "y":
+                print_success("正在配置开机自启动...")
                 run_command_live(client, "systemctl enable mysqld")
-                print_info("MySQL服务配置开机自启动完成\n\n")
+                print_success("✓ MySQL服务开机自启动配置完成")
             else:
-                print_warning("返回上一级")
+                print_warning("→ 已跳过开机自启动配置")
 
             choice = input(Fore.MAGENTA + f"是否启动MySQL服务？(y/N): ").strip().lower()
             if choice == "y":
+                print_success("正在启动MySQL服务...")
                 _, status = run_command_live(client, "systemctl start mysqld")
                 if status != 0:
-                    print_error("\nMySQL服务启动失败！\n")
+                    print_error("✗ MySQL服务启动失败！")
                 else:
+                    print_success("✓ MySQL服务启动成功")
                     default_password, _, _ = run_command(client, "grep -a \"A temporary password is generated\" /var/log/mysql/mysqld-error.log | tail -n1 | awk '{print $NF}'")
-                    print_info("MySQL服务启动成功！请手动连接MySQL并修改初始root密码！\n")
-                    print_info("默认root密码为：" + default_password + "\n")
+                    print_info("请手动连接MySQL并修改初始root密码！")
+                    print_info(f"默认root密码为：{default_password}")
             else:
-                print_warning("返回上一级")
+                print_warning("→ 已跳过MySQL服务启动")
 
     else:
         print_warning(f"返回上一级")

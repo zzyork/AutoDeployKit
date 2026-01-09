@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Restart=on-failure
-ExecStart=/usr/local/prometheus/prometheus --config.file=/usr/local/prometheus/prometheus.yml --storage.tsdb.path=/data/prometheus --web.enable-lifecycle --storage.tsdb.retention.time=90d
+ExecStart=${PROMETHEUS_INSTALL_PATH}/prometheus --config.file=${PROMETHEUS_INSTALL_PATH}/prometheus.yml --storage.tsdb.path=${PROMETHEUS_DATA_PATH} --web.enable-lifecycle --storage.tsdb.retention.time=90d
 Restart=on-failure
 SuccessExitStatus=0
 LimitNOFILE=65536

@@ -64,15 +64,13 @@ def install_nginx(client):
         url = "https://nginx.org/download/nginx-" + stable_version + ".tar.gz"
         remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
 
-        # 优先使用服务器wget下载
-        print_info(f"尝试使用服务器wget下载 {url}")
         wget_cmd = f"cd /usr/local/src && wget {url}"
         output, wget_status = run_command_live(client, wget_cmd)
         
         if wget_status == 0:
-            print_success("服务器wget下载成功")
+            pass
         else:
-            print_warning("服务器wget下载失败，尝试本地上传")
+            print_warning("下载失败，尝试本地上传")
             try:
                 download_file(url, local_path)
                 upload_file(client, local_path, remote_path)
@@ -102,12 +100,12 @@ def install_nginx(client):
             print_info("\n安装完成！\n当前nginx版本：" + current_version)
             choice = input(Fore.MAGENTA + f"是否自动调整nginx.conf文件？(y/N): ").strip().lower()
             if choice == "y":
-                local_path = os.path.join("config", "nginx.conf")
+                local_path = os.path.join("config", "nginx", "nginx.conf")
                 remote_path = install_path + "/conf/nginx.conf"
                 upload_file_with_vars(client, local_path, remote_path, {'NGINX_INSTALL_PATH': install_path, 'NGINX_LOG_DIR': log_dir})
             choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
             if choice == "y":
-                local_path = os.path.join("config", "nginx.service")
+                local_path = os.path.join("config", "nginx", "nginx.service")
                 remote_path = "/etc/systemd/system/nginx.service"
                 upload_file_with_vars(client, local_path, remote_path, {'install_path': install_path})
                 
@@ -152,15 +150,13 @@ def upgrade_nginx(client):
     remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
     install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
 
-    # 优先使用服务器wget下载
-    print_info(f"尝试使用服务器wget下载 {url}")
     wget_cmd = f"cd /usr/local/src && wget {url}"
     output, wget_status = run_command_live(client, wget_cmd)
     
     if wget_status == 0:
-        print_success("服务器wget下载成功")
+        pass
     else:
-        print_warning("服务器wget下载失败，尝试本地上传")
+        print_warning("下载失败，尝试本地上传")
         try:
             download_file(url, local_path)
             upload_file(client, local_path, remote_path)

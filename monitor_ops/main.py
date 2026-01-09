@@ -6,8 +6,8 @@ from utils.output import print_info, print_warning, print_error
 
 # 注册所有操作：编号 -> (描述, 函数)
 operations = {
-    "1": ("安装mysqld监控", manage_mysql_monitor),
-    "2": ("安装Prometheus", manage_prometheus)
+    "1": ("安装Prometheus", manage_prometheus),
+    "2": ("安装mysqld监控", manage_mysql_monitor),
 }
 
 def run(clients):

@@ -9,7 +9,7 @@ from colorama import Fore
 
 LIMITS_FILE = "/etc/security/limits.conf"
 SYSCTL_FILE = "/etc/sysctl.conf"
-DEFAULT_SYSCTL_LOCAL = "config/sysctl.conf"
+DEFAULT_SYSCTL_LOCAL = "config/linux/sysctl.conf"
 LIMIT_RULES = {
     "nofile": [
         "* soft nofile 65535",
@@ -50,9 +50,9 @@ def check_and_optimize_sysctl(client):
     print_info("\n检查 /etc/sysctl.conf 系统参数配置 ...")
 
     # 读取本地模板
-    local_path = os.path.join("config", "sysctl.conf")
+    local_path = os.path.join("config", "linux", "sysctl.conf")
     if not os.path.exists(local_path):
-        print_error("默认配置文件不存在：config/sysctl.conf")
+        print_error("默认配置文件不存在：config/linux/sysctl.conf")
         return
 
     # 判断差异
