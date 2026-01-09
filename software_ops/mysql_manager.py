@@ -1,4 +1,5 @@
 import os
+from random import choice
 import re
 
 import requests
@@ -31,6 +32,27 @@ def install_mysql8(client):
     print_info("Mysql最新发行版为：" + stable_version)
     choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
     if choice == "y":
+        # 提示输入MySQL安装目录
+        default_install_path = "/usr/local/mysql" + '.'.join(stable_version.split('.')[:2])
+        install_path = input(Fore.MAGENTA + f"请输入MySQL安装目录 (默认: {default_install_path}): ").strip()
+        if not install_path:
+            install_path = default_install_path
+        print_info("MySQL将安装到: " + install_path + "\n")
+        
+        # 提示输入数据目录
+        default_data_dir = "/data/mysql"
+        data_dir = input(Fore.MAGENTA + f"请输入MySQL数据目录 (默认: {default_data_dir}): ").strip()
+        if not data_dir:
+            data_dir = default_data_dir
+        print_info("MySQL数据目录: " + data_dir)
+        
+        # 提示输入日志目录
+        default_log_dir = "/var/log/mysql"
+        log_dir = input(Fore.MAGENTA + f"请输入MySQL日志目录 (默认: {default_log_dir}): ").strip()
+        if not log_dir:
+            log_dir = default_log_dir
+        print_info("MySQL日志目录: " + log_dir + "\n")
+        
         print_info("开始安装Mysql " + stable_version + "......\n")
 
         print_info("创建mysql用户")
@@ -39,15 +61,14 @@ def install_mysql8(client):
         print_success("创建mysql用户完成。\n")
 
         print_info("创建数据和日志目录")
-        output, status = run_command_live(client, "mkdir -p /data/mysql && chown -R mysql:mysql /data/mysql")
-        output, status = run_command_live(client, "mkdir -p /var/log/mysql && chown -R mysql:mysql /var/log/mysql")
+        output, status = run_command_live(client, f"mkdir -p {data_dir} && chown -R mysql:mysql {data_dir}")
+        output, status = run_command_live(client, f"mkdir -p {log_dir} && chown -R mysql:mysql {log_dir}")
         print_success("创建数据和日志目录完成。\n")
 
         print_info("开始下载源码包并安装")
         local_path = os.path.join("packages", "mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz")
         url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
         remote_path = "/usr/local/src/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
-        install_path = "/usr/local/mysql" + '.'.join(stable_version.split('.')[:2])
 
         try:
             download_file(url, local_path)
@@ -60,7 +81,7 @@ def install_mysql8(client):
             "tar xvf " + remote_path + " -C /usr/local/src/",
             "mv /usr/local/src/mysql-" + stable_version + "-linux-glibc2.28-x86_64 " + install_path,
             "chown -R mysql:mysql " + install_path,
-            "printf '\nPATH=$PATH:/usr/local/mysql8.0/bin\nexport PATH\n' >> /etc/profile",
+            "printf '\nPATH=$PATH:" + install_path + "/bin\nexport PATH\n' >> /etc/profile",
             "source /etc/profile",
         ]
 
@@ -80,7 +101,7 @@ def install_mysql8(client):
             if choice == "y":
                 local_path = os.path.join("config", "my.cnf")
                 remote_path = "/etc/my.cnf"
-                upload_file(client, local_path, remote_path)
+                upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_DATA_DIR': data_dir, 'MYSQL_LOG_DIR': log_dir})
                 cmd = "chown mysql:mysql /etc/my.cnf"
                 run_command_live(client, cmd)
                 print_info("my.cnf文件调整完成，建议首次初始化之前根据实际需求修改my.cnf文件！！！\n\n")
@@ -99,7 +120,7 @@ def install_mysql8(client):
             if choice == "y":
                 local_path = os.path.join("config", "mysqld.service")
                 remote_path = "/etc/systemd/system/mysqld.service"
-                upload_file(client, local_path, remote_path)
+                upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_LOG_DIR': log_dir})
                 run_command_live(client, "systemctl daemon-reload")
                 print_info("systemd守护进程配置完成\n\n")
             else:
@@ -133,11 +154,18 @@ def upgrade_mysql8(client):
     stable_version = get_stable_mysql()
     print_info("开始升级 Mysql 到最新发行版 " + stable_version + "......\n")
 
+    # 获取当前MySQL安装路径
+    current_mysql_path, _, _ = run_command(client, "which mysql")
+    install_path = current_mysql_path.replace("/bin/mysql", "")
+    choice = input("当前MySQL安装路径: " + install_path + "\n是否继续升级？(y/N): ").strip().lower()
+    if choice != "y":
+        print_warning("返回上一级菜单\n")
+        return None
+
     print_info("开始下载源码包并编译安装")
     local_path = os.path.join("packages", "mysql-" + stable_version + ".tar.gz")
-    url = "https://mysql.org/download/mysql-" + stable_version + ".tar.gz"
+    url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
     remote_path = "/usr/local/src/mysql-" + stable_version + ".tar.gz"
-    install_path = "/usr/local/mysql" + '.'.join(stable_version.split('.')[:2])
 
     try:
         download_file(url, local_path)
@@ -169,26 +197,35 @@ def manage_mysql(client):
     current_version, _, _ = run_command(client, r'mysql -V | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     while True:
         print("=== Mysql软件管理 ===")
-        if not current_version or "未找到" in current_version or "not found" in current_version:
-            print("1. 安装 Mysql 8.0 最新发行版")
-            print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
-            if choice == "1":
-                install_mysql8(client)
-            elif choice == "0":
-                break
-            else:
-                print("无效选项，请重新输入")
+        print("1. 安装 Mysql 8.0 最新发行版")
+        print("0. 返回/跳过")
+        choice = input("请选择操作编号: ").strip()
+        if choice == "1":
+            install_mysql8(client)
+        elif choice == "0":
+            break
         else:
-            print_success("当前Mysql版本：" + current_version)
-            stable_version = get_stable_mysql()
-            print_info("Mysql最新发行版为：" + stable_version)
-            print("1. 升级 Mysql 到最新发行版")
-            print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
-            if choice == "1":
-                upgrade_mysql8(client)
-            elif choice == "0":
-                break
-            else:
-                print("无效选项，请重新输入")
+            print("无效选项，请重新输入")
+        # if not current_version or "未找到" in current_version or "not found" in current_version:
+        #     print("1. 安装 Mysql 8.0 最新发行版")
+        #     print("0. 返回/跳过")
+        #     choice = input("请选择操作编号: ").strip()
+        #     if choice == "1":
+        #         install_mysql8(client)
+        #     elif choice == "0":
+        #         break
+        #     else:
+        #         print("无效选项，请重新输入")
+        # else:
+        #     print_success("当前Mysql版本：" + current_version)
+        #     stable_version = get_stable_mysql()
+        #     print_info("Mysql最新发行版为：" + stable_version)
+        #     print("1. 升级 Mysql 到最新发行版")
+        #     print("0. 返回/跳过")
+        #     choice = input("请选择操作编号: ").strip()
+        #     if choice == "1":
+        #         upgrade_mysql8(client)
+        #     elif choice == "0":
+        #         break
+        #     else:
+        #         print("无效选项，请重新输入")
