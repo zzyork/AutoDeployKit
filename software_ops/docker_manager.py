@@ -74,10 +74,10 @@ def install_docker(client):
             print_info("\n安装完成！\n当前docker版本：" + current_version)
             choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
             if choice == "y":
-                local_path = os.path.join("config", "docker.service")
+                local_path = os.path.join("config", "docker", "docker.service")
                 remote_path = "/etc/systemd/system/docker.service"
                 upload_file(client, local_path, remote_path)
-                local_path = os.path.join("config", "docker.socket")
+                local_path = os.path.join("config", "docker", "docker.socket")
                 remote_path = "/etc/systemd/system/docker.socket"
                 upload_file(client, local_path, remote_path)
                 cmds = [
