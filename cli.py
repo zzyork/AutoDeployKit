@@ -65,15 +65,13 @@ def load_hosts(pattern, filename="hosts"):
         params = {}
         if line[1]:
             try:
-                # Handle the special case where keyfile might be concatenated without '='
                 param_string = line[1]
-                # Fix cases where keyfile is concatenated without '='
                 param_string = param_string.replace('keyfile"', 'keyfile="')
                 param_string = param_string.replace('proxy_keyfile"', 'proxy_keyfile="')
                 
                 for item in param_string.split():
                     if '=' not in item:
-                        continue  # Skip malformed items
+                        continue
                     k, v = item.split("=", 1)
                     v = v.strip('"').strip("'")
                     if k == "keyfile":

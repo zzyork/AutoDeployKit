@@ -14,9 +14,9 @@ RuntimeDirectory=mysql
 RuntimeDirectoryMode=0755
 
 # 确保目录权限
-ExecStartPre=/usr/bin/install -o mysql -g mysql -m 0755 -d /data/mysql /var/log/mysql
+ExecStartPre=/usr/bin/install -o mysql -g mysql -m 0755 -d ${MYSQL_DATA_DIR} ${MYSQL_LOG_DIR}
 
-ExecStart=/usr/local/mysql8.0/bin/mysqld --defaults-file=/etc/my.cnf --user=mysql
+ExecStart=${MYSQL_INSTALL_PATH}/bin/mysqld --defaults-file=/etc/my.cnf --user=mysql
 KillSignal=SIGTERM
 TimeoutStopSec=120
 SendSIGKILL=no

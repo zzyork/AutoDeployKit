@@ -52,7 +52,7 @@ def optimize_vimrc(client):
     # 明确远程绝对路径，假设用 root 用户
     remote_vimrc_path = "/root/.vimrc"
 
-    local_vimrc_path = os.path.join("config", ".vimrc")
+    local_vimrc_path = os.path.join("config", "linux", ".vimrc")
     if not os.path.exists(local_vimrc_path):
         print_error(f"本地 .vimrc 文件不存在，请检查 {local_vimrc_path}")
         return

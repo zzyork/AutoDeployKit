@@ -3,7 +3,7 @@ import os
 from colorama import Fore
 
 from utils.file_utils import get_stable_version_from_github, download_file, upload_file, upload_file_with_vars
-from utils.output import print_info, print_error, print_warning
+from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.server_utils import is_valid_ip
 
@@ -62,16 +62,35 @@ def install_mysqld_exporter(client):
                 "db_username": db_username,
                 "db_password": db_password
             }
-            local_path = os.path.join("config", "mysqld_exporter.conf")
+            local_path = os.path.join("config", "prometheus", "mysqld_exporter.conf")
             remote_path = "/usr/local/mysqld-exporter/mysqld_exporter.conf"
             upload_file_with_vars(client, local_path, remote_path, variables)
 
-            local_path = os.path.join("config", "mysqld-exporter.service")
+            local_path = os.path.join("config", "prometheus", "mysqld-exporter.service")
             remote_path = "/etc/systemd/system/mysqld-exporter.service"
             upload_file(client, local_path, remote_path)
             run_command(client, "systemctl daemon-reload && systemctl enable --now mysqld-exporter")
 
-            ## TODO： 待添加安装完成之后的服务状态展示以及prometheus配置更新功能
+            # 检查服务状态
+            print_info("\n正在检查mysqld-exporter服务状态...")
+            out, err, code = run_command(client, "systemctl status mysqld-exporter")
+            if code == 0:
+                print_success("✓ mysqld-exporter服务已成功启动并运行")
+                # 检查端口是否监听
+                port_out, port_err, port_code = run_command(client, "netstat -tlnp | grep :9104")
+                if port_code == 0:
+                    print_success("✓ mysqld-exporter端口9104正在监听")
+                else:
+                    print_warning("⚠ mysqld-exporter端口9104未检测到监听")
+            else:
+                print_error("✗ mysqld-exporter服务启动失败")
+                if err:
+                    print_error(f"错误信息: {err.strip()}")
+
+            # 询问是否更新Prometheus配置
+            choice = input(Fore.MAGENTA + f"\n是否自动更新Prometheus配置以添加MySQL监控？(y/N): ").strip().lower()
+            if choice == "y":
+                update_prometheus_config(client, db_host)
 
             print_info("\n安装完成！")
 
@@ -79,6 +98,62 @@ def install_mysqld_exporter(client):
         print_warning(f"返回上一级")
 
     return None
+
+
+def update_prometheus_config(client, mysql_host):
+    """更新Prometheus配置文件以添加MySQL监控目标"""
+    prometheus_config_path = "/etc/prometheus/prometheus.yml"
+    
+    # 检查Prometheus配置文件是否存在
+    out, err, code = run_command(client, f"test -f {prometheus_config_path}")
+    if code != 0:
+        print_warning("⚠ 未找到Prometheus配置文件，请手动配置")
+        print_info(f"配置文件路径: {prometheus_config_path}")
+        return
+    
+    print_info("正在检查Prometheus配置文件...")
+    
+    # 检查是否已经包含MySQL监控配置
+    out, err, code = run_command(client, f"grep -q 'mysqld_exporter' {prometheus_config_path}")
+    if code == 0:
+        print_warning("⚠ Prometheus配置文件中已存在MySQL监控配置")
+        return
+    
+    # 备份原配置文件
+    backup_path = f"{prometheus_config_path}.backup.$(date +%Y%m%d_%H%M%S)"
+    run_command(client, f"cp {prometheus_config_path} {backup_path}")
+    print_success(f"✓ 已备份原配置文件到 {backup_path}")
+    
+    # 添加MySQL监控配置
+    mysql_config = f"""
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['{mysql_host}:9104']
+        labels:
+          instance: '{mysql_host}'
+"""
+    
+    # 将配置添加到scrape_configs部分
+    add_config_cmd = f"""
+sed -i '/scrape_configs:/a\\{mysql_config}' {prometheus_config_path}
+"""
+    out, err, code = run_command(client, add_config_cmd)
+    
+    if code == 0:
+        print_success("✓ 已成功添加MySQL监控配置到Prometheus")
+        
+        # 重新加载Prometheus配置
+        out, err, reload_code = run_command(client, "systemctl reload prometheus")
+        if reload_code == 0:
+            print_success("✓ Prometheus配置已重新加载")
+        else:
+            print_warning("⚠ Prometheus配置重载失败，请手动重启Prometheus服务")
+            print_info("命令: systemctl restart prometheus")
+    else:
+        print_error("✗ 添加Prometheus配置失败")
+        if err:
+            print_error(f"错误信息: {err.strip()}")
+
 
 def manage_mysql_monitor(client):
     install_mysqld_exporter(client)
