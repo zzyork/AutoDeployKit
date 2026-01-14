@@ -1,4 +1,4 @@
-# server_ops/security_patch_ops.py
+# server_ops/openssl_upgrade.py
 import os
 
 from colorama import Fore
@@ -133,12 +133,12 @@ def install_perl_cpan(client):
     for cmd in cmds:
         run_command_live(client, cmd)
 
-def manage_security_patch(client):
+def manage_ssl(client):
     current_version, _, _ = run_command(client, 'openssl version')
     print_info("\n当前OpenSSL版本：" + current_version)
 
     while True:
-        print("=== 安全补丁升级操作 ===")
+        print("=== OpenSSL升级操作 ===")
         if current_version.startswith("OpenSSL 1.1.1"):
             print("1. 升级 OpenSSL 到 1.1.1w")
         elif current_version.startswith("OpenSSL 3.0"):
