@@ -5,7 +5,8 @@ from server_ops.firewall_selinux_ops import manage_firewall_selinux
 from server_ops.kernel_optimize_ops import kernel_optimize
 from server_ops.disk_partition_ops import manage_disk_partition
 from server_ops.system_optimize_ops import manage_system_optimize
-from server_ops.openssl_upgrade import manage_security_patch
+from server_ops.openssl_upgrade import manage_ssl
+from server_ops.openssh_upgrade import manage_openssh
 
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
@@ -19,7 +20,8 @@ operations = {
     "5": ("内核参数调优", kernel_optimize),
     "6": ("磁盘分区与挂载", manage_disk_partition),
     "7": ("系统优化", manage_system_optimize),
-    "8": ("升级OpenSSL", manage_security_patch)
+    "8": ("OpenSSL管理", manage_ssl),
+    "9": ("OpenSSH管理", manage_openssh),
 }
 
 def run(clients):
