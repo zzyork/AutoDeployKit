@@ -10,6 +10,7 @@ def upgrade_packages(client):
         print_warning("软件包升级可能有错误")
 
 def install_base_deps(client):
+    # TODO：如果某个包不存在则移除后重试
     deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet"
     print_info("正在安装基础依赖软件包 ...")
     _, _, status = run_command(client, f"yum install -y {deps}")
@@ -19,7 +20,8 @@ def install_base_deps(client):
         print_warning("部分依赖包可能安装失败")
 
 def install_base_tools(client):
-    tools = "htop iotop tar make ntpdate"
+    # TODO：如果某个包不存在则移除后重试
+    tools = "htop iotop tar make ntpdate lsof"
     print_info("正在安装基础工具软件包 ...")
     _, _, status = run_command(client, f"yum install -y {tools}")
     if status == 0:
