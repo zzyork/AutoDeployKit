@@ -3,31 +3,26 @@ from utils.output import print_info, print_success, print_warning
 
 def upgrade_packages(client):
     print_info("正在升级系统软件包 ...")
-    _, _, status = run_command(client, "yum update -y")
+    _, _, status = run_command(client, "yum makecache && yum update -y")
     if status == 0:
         print_success("软件包升级完成")
     else:
         print_warning("软件包升级可能有错误")
 
 def install_base_deps(client):
-    # TODO：如果某个包不存在则移除后重试
-    deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet"
+    deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet oks"
     print_info("正在安装基础依赖软件包 ...")
-    _, _, status = run_command(client, f"yum install -y {deps}")
+    _, status = run_command_live(client, f"yum install -y --skip-broken {deps}")
+
     if status == 0:
         print_success("基础依赖包安装完成")
-    else:
-        print_warning("部分依赖包可能安装失败")
 
 def install_base_tools(client):
-    # TODO：如果某个包不存在则移除后重试
     tools = "htop iotop tar make ntpdate lsof"
     print_info("正在安装基础工具软件包 ...")
-    _, _, status = run_command(client, f"yum install -y {tools}")
+    _, status = run_command_live(client, f"yum install -y --skip-broken {tools}")
     if status == 0:
         print_success("基础工具包安装完成")
-    else:
-        print_warning("部分工具包可能安装失败")
 
 def manage_packages(client):
     while True:
@@ -40,13 +35,11 @@ def manage_packages(client):
         op = input("请输入操作编号: ").strip()
 
         if op == "1":
-            run_command_live(client, "yum update -y")
+            upgrade_packages(client)
         elif op == "2":
-            deps = "unzip zip vim git net-tools lrzsz bind-utils dos2unix sysstat irqbalance tree nmap iptraf gcc gcc-c++ rsync net-snmp openssh-clients lvm2 wget bc glibc-headers python3 telnet"
-            run_command_live(client, f"yum install -y {deps}")
+            install_base_deps(client)
         elif op == "3":
-            tools = "htop iotop tar make ntpdate"
-            run_command_live(client, f"yum install -y {tools}")
+            install_base_tools(client)
         elif op == "0":
             break
         else:
