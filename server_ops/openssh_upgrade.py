@@ -9,48 +9,12 @@ from colorama import Fore
 from utils import output
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file
+from utils.file_utils import download_file, upload_file, get_latest_version_from_github
 import requests
 import re
 from packaging import version
 
-def get_latest_openssh(prefix: str):
-    url = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/"
-    sess = requests.Session()
-
-    # 版本解析 key：major.minor[.micro]pN
-    def key(v: str):
-        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
-        return tuple(int(x or 0) for x in m.groups()) if m else (-1, -1, -1, -1)
-
-    # 抓版本列表（只靠 HTML 正则）
-    def extract(html: str):
-        vers = re.findall(r"openssh-((?:\d+\.)+\d+p\d+)\.tar\.gz", html)
-        vers = [v for v in vers if v.startswith(prefix)]
-        return vers
-
-    # 1) 先 Range 请求（大幅减少下载量）
-    try:
-        r = sess.get(url, headers={"Range": "bytes=0-65535"}, timeout=(2, 5))
-        # 有些服务器不支持 Range，会返回 200 全量；也没关系
-        r.raise_for_status()
-        vers = extract(r.text)
-        if vers:
-            return max(vers, key=key)
-    except Exception:
-        pass
-
-    # 2) 兜底：全量请求（保证找到）
-    r = sess.get(url, timeout=(2, 10))
-    r.raise_for_status()
-    vers = extract(r.text)
-    if not vers:
-        raise ValueError(f"未找到前缀为 {prefix} 的版本")
-    return max(vers, key=key)
-
 def upgrade_openssh(client):
-    latest_version = get_latest_openssh(prefix="9.")
-    print_info("OpenSSH 最新发行版为：" + latest_version)
     choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
     if choice == "y":
         # 先备份当前版本
@@ -632,7 +596,7 @@ def manage_openssh(client):
     current_version, _, status = run_command(client, 'ssh -V 2>&1')
     print_success("当前OpenSSH版本：" + current_version.strip())
     try:
-        latest_version = get_latest_openssh(prefix="9.")
+        latest_version = get_latest_version_from_github("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.", None, "openssh")
         print_info("OpenSSH最新发行版为：" + latest_version)
     except:
         print_warning("无法获取最新版本信息")

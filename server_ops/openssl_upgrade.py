@@ -70,8 +70,6 @@ def upgrade_openssl_1_1_1(client):
     return None
 
 def upgrade_openssl_v3(client):
-    latest_version = get_latest_openssl(prefix="3.0.")
-    print_info("OpenSSL 3.0.* 最新发行版为：" + latest_version)
     choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
     if choice == "y":
         print_info("升级 OpenSSL 到 " + latest_version)

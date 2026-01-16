@@ -8,6 +8,15 @@ from string import Template
 import requests
 from utils.output import print_error, print_info
 
+def get_local_md5(filepath):
+    """计算本地文件的 MD5 哈希值"""
+    with open(filepath, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+def get_remote_md5(client, remote_path):
+    output, _, _ = run_command(client, f"md5sum {remote_path} | awk '{{print $1}}'")
+    return output.strip()
+
 
 def download_file(url, dest):
     if os.path.exists(dest):
@@ -276,6 +285,131 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
             os.remove(tmpfile_path)
         except Exception:
             pass
+
+def compare_file_content(client, filepath, remote_path):
+    """比较本地文件和远程文件的内容差异，返回远程文件相对于本地文件多出来或缺少的内容"""
+    try:
+        # 读取本地文件内容
+        with open(filepath, 'r', encoding='utf-8') as f:
+            local_content = f.read()
+        
+        # 获取远程文件内容
+        output, _, _ = run_command(client, f"cat {remote_path}")
+        remote_content = output
+        
+        # 按行分割并过滤空行
+        local_lines = [line for line in local_content.splitlines() if line.strip()]
+        remote_lines = [line for line in remote_content.splitlines() if line.strip()]
+        
+        # 使用difflib进行比较
+        diff = list(difflib.unified_diff(
+            local_lines, 
+            remote_lines, 
+            fromfile=f"local:{filepath}",
+            tofile=f"remote:{remote_path}",
+            lineterm=''
+        ))
+        
+        if not diff:
+            return "文件内容完全相同"
+        
+        # 过滤掉diff的头部信息，只保留实际的差异行
+        result_lines = []
+        for line in diff:
+            if line.startswith('+++') or line.startswith('---') or line.startswith('@@'):
+                continue
+            elif line.startswith('+'):
+                result_lines.append(f"远程文件多出: {line[1:]}")
+            elif line.startswith('-'):
+                result_lines.append(f"远程文件缺少: {line[1:]}")
+            elif line.startswith(' '):
+                continue  # 忽略相同的行
+        
+        if not result_lines:
+            return "文件内容完全相同"
+        
+        return '\n'.join(result_lines)
+        
+    except FileNotFoundError:
+        return f"本地文件不存在: {filepath}"
+    except Exception as e:
+        return f"比较文件内容时出错: {str(e)}"
+
+def get_latest_version_from_github(url: str, prefix: str = "", token: str | None = None, source_type: str = "github") -> str:
+    if source_type == "github":
+        tags: list[str] = []
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "version-checker",
+        }
+        
+        token = token or os.getenv("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        
+        params = {"page": 1, "per_page": 100}
+        
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        
+        # 处理 rate limit
+        if resp.status_code == 403:
+            remaining = resp.headers.get("X-RateLimit-Remaining")
+            reset = resp.headers.get("X-RateLimit-Reset")
+            if remaining == "0" and reset:
+                reset_ts = int(reset)
+                wait_s = max(0, reset_ts - int(time.time()))
+                raise RuntimeError(
+                    f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
+                )
+            # 其它 403
+            raise RuntimeError(f"GitHub API 403: {resp.text}")
+        
+        if resp.status_code != 200:
+            raise RuntimeError(f"GitHub API 请求失败: {resp.status_code}, {resp.text}")
+        
+        data = resp.json()
+        for tag in data:
+            name = tag.get("name", "")
+            # openssl tag 可能是 "openssl-3.0.16" 这种
+            v = name.split("-")[-1]
+            if v.startswith(prefix) and re.fullmatch(r"\d+\.\d+\.\d+", v):
+                tags.append(v)
+        
+        if not tags:
+            raise ValueError(f"未找到前缀为 {prefix} 的版本")
+        
+        return max(tags, key=version.parse)
+    
+    elif source_type == "openssh":
+        sess = requests.Session()
+        
+        def key(v: str):
+            m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
+            return tuple(int(x or 0) for x in m.groups()) if m else (-1, -1, -1, -1)
+        
+        def extract(html: str):
+            vers = re.findall(r"openssh-((?:\d+\.)+\d+p\d+)\.tar\.gz", html)
+            vers = [v for v in vers if v.startswith(prefix)]
+            return vers
+        
+        try:
+            r = sess.get(url, headers={"Range": "bytes=0-65535"}, timeout=(2, 5))
+            r.raise_for_status()
+            vers = extract(r.text)
+            if vers:
+                return max(vers, key=key)
+        except Exception:
+            pass
+        
+        r = sess.get(url, timeout=(2, 10))
+        r.raise_for_status()
+        vers = extract(r.text)
+        if not vers:
+            raise ValueError(f"未找到前缀为 {prefix} 的版本")
+        return max(vers, key=key)
+    
+    else:
+        raise ValueError(f"不支持的源类型: {source_type}")
 
 def get_stable_version_from_github(url, prefix=None):
     tags = []

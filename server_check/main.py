@@ -206,7 +206,7 @@ def run(clients):
         timestamp = datetime.datetime.now().strftime("%Y%m")
         group = sys.argv[2] if len(sys.argv) > 2 else None
 
-        dir_name = f"server_check_reports/{group}/{timestamp}"
+        dir_name = f"server_check/reports/{group}/{timestamp}"
         try:
             os.makedirs(dir_name, exist_ok=True)
         except Exception as e:
