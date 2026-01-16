@@ -44,6 +44,7 @@ def upgrade_openssl_1_1_1(client):
         run_command_live(client, cmd)
 
     current_version, _, _ = run_command(client, 'openssl version')
+    current_version = current_version.strip() if current_version else ""
     print_info("\n安装完成！\n当前OpenSSL版本：" + current_version)
 
     return None
@@ -85,6 +86,7 @@ def upgrade_openssl_v3(client):
             run_command_live(client, cmd)
 
         current_version, _, _ = run_command(client, 'openssl version')
+        current_version = current_version.strip() if current_version else ""
         print_info("\n安装完成！\n当前OpenSSL版本：" + current_version)
     else:
         print_warning(f"返回上一级")
@@ -111,7 +113,9 @@ def install_perl_cpan(client):
         run_command_live(client, cmd)
 
 def manage_ssl(client):
+    global current_version, latest_version
     current_version, _, _ = run_command(client, 'openssl version')
+    current_version = current_version.strip() if current_version else ""
     print_info("当前OpenSSL版本：" + current_version)
     if current_version.startswith("OpenSSL 1.1.1"):
         latest_version = get_latest_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "1.1.1")

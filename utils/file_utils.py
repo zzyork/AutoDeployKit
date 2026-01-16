@@ -332,13 +332,12 @@ def compare_file_content(client, filepath, remote_path):
         return f"比较文件内容时出错: {str(e)}"
 
 def get_latest_version(url: str, prefix: str = "") -> str:
-    token = os.getenv("GITHUB_TOKEN")
-    headers = {"User-Agent": "version-checker"}
     content = ""
     
     if "api.github.com" in url:
+        headers = {"User-Agent": "version-checker"}
         headers["Accept"] = "application/vnd.github+json"
-        token = token or os.getenv("GITHUB_TOKEN")
+        token = os.getenv("GITHUB_TOKEN")
         if token:
             headers["Authorization"] = f"Bearer {token}"
         
@@ -365,11 +364,11 @@ def get_latest_version(url: str, prefix: str = "") -> str:
         sess = requests.Session()
         
         try:
-            r = sess.get(url, headers={"Range": "bytes=0-65535", **headers}, timeout=(2, 5))
+            r = sess.get(url, timeout=(2, 5))
             r.raise_for_status()
             content = r.text
         except Exception:
-            r = sess.get(url, headers=headers, timeout=(2, 10))
+            r = sess.get(url, timeout=(2, 10))
             r.raise_for_status()
             content = r.text
     
@@ -409,4 +408,3 @@ def get_latest_version(url: str, prefix: str = "") -> str:
     
     latest_version = max(versions, key=version_key)
     return latest_version
-

@@ -15,8 +15,7 @@ def install_prometheus(client):
         return None
     else:
         pass
-    url = "https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5"
-    stable_version = get_latest_version(url)
+    stable_version = get_latest_version("https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5")
     print_info("Prometheus最新发行版为：" + stable_version)
     choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
     if choice != "y":
@@ -80,7 +79,7 @@ def install_prometheus(client):
 
     cmd_status = 0
     for cmd in cmds:
-        output, cmd_status = run_command_live(client, cmd)
+        _, _, cmd_status = run_command(client, cmd)
         if cmd_status != 0 :
             print_error(f"\n命令执行失败: {cmd}")
             print_warning("中止当前操作，返回上一级菜单\n")
@@ -94,9 +93,9 @@ def install_prometheus(client):
             run_command(client, "mkdir -p /data/prometheus")
             upload_file_with_vars(client, local_path, remote_path, {'PROMETHEUS_INSTALL_PATH': install_path, 'PROMETHEUS_DATA_PATH': data_dir})
             run_command(client, "systemctl daemon-reload")
-            print_success("✓ systemd守护进程配置完成")
+            print_success("✓ systemd守护进程配置完成\n")
         else:
-            print_warning("→ 已跳过systemd守护进程配置")
+            print_warning("→ 已跳过systemd守护进程配置\n")
 
         choice = input(Fore.MAGENTA + f"是否配置开机自启动？(y/N): ").strip().lower()
         if choice == "y":

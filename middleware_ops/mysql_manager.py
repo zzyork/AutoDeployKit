@@ -1,40 +1,15 @@
 import os
-from random import choice
-import re
 import json
 import datetime
-
-import requests
 from colorama import Fore
-
-from utils.file_utils import download_file, upload_file, upload_file_with_vars
+from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_latest_version
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 
-
-def get_stable_mysql():
-    url = "https://dev.mysql.com/downloads/mysql/8.0.html"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"请求失败：{e}")
-        return None
-
-    match = re.search(r"MySQL Community Server\s+(8\.0\.\d+)", response.text, re.DOTALL)
-
-    if not match:
-        print("未找到 Stable version 信息")
-        return None
-
-    return match.group(1)
-
 def install_mysql8(client):
-    stable_version = get_stable_mysql()
-    print_info("Mysql最新发行版为：" + stable_version)
     choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
     if choice == "y":
-        default_install_path = "/usr/local/mysql" + '.'.join(stable_version.split('.')[:2])
+        default_install_path = "/usr/local/mysql" + '.'.join(latest_version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入MySQL安装目录 (默认: {default_install_path}): ").strip()
         if not install_path:
             install_path = default_install_path
@@ -52,7 +27,7 @@ def install_mysql8(client):
             log_dir = default_log_dir
         print_info("MySQL日志目录: " + log_dir + "\n")
         
-        print_info("开始安装Mysql " + stable_version + "......\n")
+        print_info("开始安装Mysql " + latest_version + "......\n")
 
         print_info("创建mysql用户")
         output, status = run_command_live(client, "getent group mysql || groupadd mysql")
@@ -65,9 +40,9 @@ def install_mysql8(client):
         print_success("创建数据和日志目录完成。\n")
 
         print_info("开始下载源码包并安装")
-        local_path = os.path.join("packages", "mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz")
-        url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
-        remote_path = "/usr/local/src/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
+        local_path = os.path.join("packages", "mysql-" + latest_version + "-linux-glibc2.28-x86_64.tar.xz")
+        url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + latest_version + "-linux-glibc2.28-x86_64.tar.xz"
+        remote_path = "/usr/local/src/mysql-" + latest_version + "-linux-glibc2.28-x86_64.tar.xz"
 
         try:
             download_file(url, local_path)
@@ -78,7 +53,7 @@ def install_mysql8(client):
         upload_file(client, local_path, remote_path)
         cmds = [
             "tar xvf " + remote_path + " -C /usr/local/src/",
-            "mv /usr/local/src/mysql-" + stable_version + "-linux-glibc2.28-x86_64 " + install_path,
+            "mv /usr/local/src/mysql-" + latest_version + "-linux-glibc2.28-x86_64 " + install_path,
             "chown -R mysql:mysql " + install_path,
             "printf '\nPATH=$PATH:" + install_path + "/bin\nexport PATH\n' >> /etc/profile",
             "source /etc/profile",
@@ -93,7 +68,8 @@ def install_mysql8(client):
                 break
 
         if cmd_status == 0:
-            current_version, _, _ = run_command(client, r'mysql -V | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+            current_version, _, _ = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+            current_version = current_version.strip() if current_version else ""
             print_info("\n安装完成！\n当前mysql版本：" + current_version)
             
             choice = input(Fore.MAGENTA + f"是否自动配置my.cnf文件？(y/N): ").strip().lower()
@@ -158,8 +134,7 @@ def install_mysql8(client):
     return None
 
 def upgrade_mysql8(client):
-    stable_version = get_stable_mysql()
-    print_info("开始升级 Mysql 到最新发行版 " + stable_version + "......\n")
+    print_info("开始升级 Mysql 到最新发行版 " + latest_version + "......\n")
 
     # 先备份当前版本
     print_info("升级前备份当前mysql版本...")
@@ -182,9 +157,9 @@ def upgrade_mysql8(client):
         return None
 
     print_info("开始下载源码包并编译安装")
-    local_path = os.path.join("packages", "mysql-" + stable_version + ".tar.gz")
-    url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + stable_version + "-linux-glibc2.28-x86_64.tar.xz"
-    remote_path = "/usr/local/src/mysql-" + stable_version + ".tar.gz"
+    local_path = os.path.join("packages", "mysql-" + latest_version + ".tar.gz")
+    url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + latest_version + "-linux-glibc2.28-x86_64.tar.xz"
+    remote_path = "/usr/local/src/mysql-" + latest_version + ".tar.gz"
 
     try:
         download_file(url, local_path)
@@ -195,8 +170,8 @@ def upgrade_mysql8(client):
     upload_file(client, local_path, remote_path)
     cmds = [
         "tar zxf " + remote_path + " -C /usr/local/src/",
-        "cd /usr/local/src/mysql-" + stable_version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
-        "cd /usr/local/src/mysql-" + stable_version + "&& make && make install",
+        "cd /usr/local/src/mysql-" + latest_version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
+        "cd /usr/local/src/mysql-" + latest_version + "&& make && make install",
         "ln -fs " + install_path + "/sbin/mysql /usr/bin/mysql"
     ]
 
@@ -214,7 +189,8 @@ def upgrade_mysql8(client):
             break
 
     if cmd_status == 0:
-        _, current_version, _ = run_command(client, r'mysql -v')
+        current_version, _, _ = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version = current_version.strip() if current_version else ""
         print_success(f"\n升级已完成！\n当前mysql版本: {current_version}")
         print_info("建议在非业务高峰期手动重启mysql")
         
@@ -239,7 +215,7 @@ def backup_mysql(client):
         print_error("无法获取当前mysql版本信息")
         return None
     
-    current_version = output.strip()
+    current_version = output.strip() if output else ""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = f"/data/backups/mysql_backup_{current_version}_{timestamp}"
     
@@ -505,13 +481,17 @@ def list_mysql_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_mysql(client):
-    current_version, _, status = run_command(client, r'mysql -V | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+    global current_version, status, latest_version
+    current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+    current_version = current_version.strip() if current_version else ""
+    latest_version = get_latest_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
+    print_info("Mysql最新发行版为：" + latest_version)
     while True:
         print("=== Mysql软件管理 ===")
-        if status != 0 or not current_version or current_version.strip() == "":
+        if status != 0 or not current_version or current_version == "":
             print("1. 安装 Mysql 8.0 最新发行版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = input("请选择操作编号: ")
             if choice == "1":
                 install_mysql8(client)
             elif choice == "0":
@@ -519,9 +499,9 @@ def manage_mysql(client):
             else:
                 print("无效选项，请重新输入")
         else:
-            print_success("当前Mysql版本：" + current_version.strip())
-            stable_version = get_stable_mysql()
-            print_info("Mysql最新发行版为：" + stable_version)
+            print_success("当前Mysql版本：" + current_version)
+            latest_version = get_stable_mysql()
+            print_info("Mysql最新发行版为：" + latest_version)
             print("1. 升级 Mysql 到最新发行版")
             print("2. 备份当前 Mysql 版本")
             print("3. 回滚 Mysql 到之前版本")
@@ -542,4 +522,5 @@ def manage_mysql(client):
                 print("无效选项，请重新输入")
         
         # 重新获取版本状态
-        current_version, _, status = run_command(client, r'mysql -V | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version = current_version.strip() if current_version else ""

@@ -221,6 +221,7 @@ def upgrade_openssh(client):
                 break
 
         current_version, _, _ = run_command(client, 'ssh -V 2>&1')
+        current_version = current_version.strip() if current_version else ""
         print_success(f"\n升级已完成！\n当前OpenSSH版本: {current_version}")
         print_info("建议在非业务高峰期手动重启sshd服务")
         
@@ -254,7 +255,7 @@ def backup_openssh(client):
         print_error("无法解析OpenSSH版本号")
         return None
     
-    current_version = version_match.group(1)
+    current_version = version_match.group(1).strip() if version_match.group(1) else ""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = f"/data/backups/openssh_backup_{current_version}_{timestamp}"
     
@@ -589,8 +590,10 @@ def list_openssh_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_openssh(client):
-    current_version, _, status = run_command(client, 'ssh -V 2>&1')
-    print_success("当前OpenSSH版本：" + current_version.strip())
+    global current_version, latest_version
+    current_version, _, _ = run_command(client, 'ssh -V 2>&1')
+    current_version = current_version.strip() if current_version else ""
+    print_success("当前OpenSSH版本：" + current_version)
     try:
         latest_version = get_latest_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
         print_info("OpenSSH最新发行版为：" + latest_version)
@@ -621,3 +624,4 @@ def manage_openssh(client):
         
         # 重新获取版本状态
         current_version, _, status = run_command(client, 'ssh -V 2>&1')
+        current_version = current_version.strip() if current_version else ""
