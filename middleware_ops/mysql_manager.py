@@ -520,7 +520,3 @@ def manage_mysql(client):
                 break
             else:
                 print("无效选项，请重新输入")
-        
-        # 重新获取版本状态
-        current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-        current_version = current_version.strip() if current_version else ""

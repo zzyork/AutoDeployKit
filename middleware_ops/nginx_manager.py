@@ -32,7 +32,7 @@ def install_nginx(client):
         print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        output, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
+        output, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool pcre-devel')
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
@@ -439,7 +439,7 @@ def manage_nginx(client):
             else:
                 print("无效选项，请重新输入")
         else:
-            print_success("当前Nginx版本：" + current_version
+            print_success("当前Nginx版本：" + current_version)
             print_info("Nginx最新发行版为：" + latest_version)
             print("1. 升级 Nginx 到最新发行版")
             print("2. 备份当前 Nginx 版本")
@@ -459,7 +459,3 @@ def manage_nginx(client):
                 break
             else:
                 print("无效选项，请重新输入")
-        
-        # 重新获取版本状态
-        current_version,_ , status = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
-        current_version = current_version.strip() if current_version else ""
