@@ -2,17 +2,13 @@
 import os
 import datetime
 import json
-from traceback import print_tb
 
 from colorama import Fore
 
-from utils import output
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file, get_latest_version_from_github
-import requests
+from utils.file_utils import download_file, upload_file, get_latest_version
 import re
-from packaging import version
 
 def upgrade_openssh(client):
     choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
@@ -596,7 +592,7 @@ def manage_openssh(client):
     current_version, _, status = run_command(client, 'ssh -V 2>&1')
     print_success("当前OpenSSH版本：" + current_version.strip())
     try:
-        latest_version = get_latest_version_from_github("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.", None, "openssh")
+        latest_version = get_latest_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
         print_info("OpenSSH最新发行版为：" + latest_version)
     except:
         print_warning("无法获取最新版本信息")

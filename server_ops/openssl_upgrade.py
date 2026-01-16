@@ -5,31 +5,10 @@ from colorama import Fore
 
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file
+from utils.file_utils import download_file, upload_file, get_latest_version
 import requests
 import re
 from packaging import version
-
-def get_latest_openssl(prefix: str):
-    tags = []
-    url = f"https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50"
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise RuntimeError(f"GitHub API 请求失败: {response.status_code}")
-    data = response.json()
-    for tag in data:
-        name = tag["name"].split("-")[-1]
-        if name.startswith(prefix):
-            ver_math = re.match(r"^(\d+\.\d+\.\d+)$", name)
-            if ver_math:
-                tags.append(name)
-
-    if not tags:
-        raise ValueError(f"未找到前缀为 {prefix} 的版本")
-
-    # 使用 packaging.version 排序，返回最大值
-    latest = max(tags, key=version.parse)
-    return latest
 
 def upgrade_openssl_1_1_1(client):
     print_info("升级 OpenSSL 到 1.1.1w")
@@ -133,7 +112,15 @@ def install_perl_cpan(client):
 
 def manage_ssl(client):
     current_version, _, _ = run_command(client, 'openssl version')
-    print_info("\n当前OpenSSL版本：" + current_version)
+    print_info("当前OpenSSL版本：" + current_version)
+    if current_version.startswith("OpenSSL 1.1.1"):
+        latest_version = get_latest_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "1.1.1")
+    elif current_version.startswith("OpenSSL 3.0"):
+        latest_version = get_latest_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "3.0")
+    if not latest_version:
+        print_error("获取最新版本失败，中止升级")
+        return None
+    print_info("OpenSSL 最新版本：" + latest_version)
 
     while True:
         print("=== OpenSSL升级操作 ===")

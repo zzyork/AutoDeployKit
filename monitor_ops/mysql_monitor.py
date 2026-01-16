@@ -2,24 +2,23 @@ import os
 
 from colorama import Fore
 
-from utils.file_utils import get_stable_version_from_github, download_file, upload_file, upload_file_with_vars
+from utils.file_utils import get_latest_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.server_utils import is_valid_ip
 
 
 def install_mysqld_exporter(client):
-    url = "https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5"
-    stable_version = get_stable_version_from_github(url)
-    print_info("mysqld_exporter最新发行版为：" + stable_version)
+    latest_version = get_latest_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
+    print_info("mysqld_exporter最新发行版为：" + latest_version)
     choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
     if choice == "y":
-        print_info("开始安装mysqld_exporter " + stable_version + "......\n")
+        print_info("开始安装mysqld_exporter " + latest_version + "......\n")
 
         print_info("开始下载")
-        local_path = os.path.join("packages", "mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz")
-        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + stable_version + "/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
-        remote_path = "/usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
+        local_path = os.path.join("packages", "mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz")
+        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + latest_version + "/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
+        remote_path = "/usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
         print(url)
         print(remote_path)
 
@@ -32,7 +31,7 @@ def install_mysqld_exporter(client):
         upload_file(client, local_path, remote_path)
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "mv /usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64 /usr/local/mysqld-exporter"
+            "mv /usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64 /usr/local/mysqld-exporter"
         ]
 
         cmd_status = 0

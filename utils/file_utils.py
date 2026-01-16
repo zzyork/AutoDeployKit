@@ -6,6 +6,7 @@ import time
 from string import Template
 
 import requests
+from packaging import version
 from utils.output import print_error, print_info
 
 def get_local_md5(filepath):
@@ -289,19 +290,15 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
 def compare_file_content(client, filepath, remote_path):
     """比较本地文件和远程文件的内容差异，返回远程文件相对于本地文件多出来或缺少的内容"""
     try:
-        # 读取本地文件内容
         with open(filepath, 'r', encoding='utf-8') as f:
             local_content = f.read()
         
-        # 获取远程文件内容
         output, _, _ = run_command(client, f"cat {remote_path}")
         remote_content = output
         
-        # 按行分割并过滤空行
         local_lines = [line for line in local_content.splitlines() if line.strip()]
         remote_lines = [line for line in remote_content.splitlines() if line.strip()]
         
-        # 使用difflib进行比较
         diff = list(difflib.unified_diff(
             local_lines, 
             remote_lines, 
@@ -313,7 +310,6 @@ def compare_file_content(client, filepath, remote_path):
         if not diff:
             return "文件内容完全相同"
         
-        # 过滤掉diff的头部信息，只保留实际的差异行
         result_lines = []
         for line in diff:
             if line.startswith('+++') or line.startswith('---') or line.startswith('@@'):
@@ -323,7 +319,7 @@ def compare_file_content(client, filepath, remote_path):
             elif line.startswith('-'):
                 result_lines.append(f"远程文件缺少: {line[1:]}")
             elif line.startswith(' '):
-                continue  # 忽略相同的行
+                continue
         
         if not result_lines:
             return "文件内容完全相同"
@@ -335,23 +331,19 @@ def compare_file_content(client, filepath, remote_path):
     except Exception as e:
         return f"比较文件内容时出错: {str(e)}"
 
-def get_latest_version_from_github(url: str, prefix: str = "", token: str | None = None, source_type: str = "github") -> str:
-    if source_type == "github":
-        tags: list[str] = []
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "version-checker",
-        }
-        
+def get_latest_version(url: str, prefix: str = "") -> str:
+    token = os.getenv("GITHUB_TOKEN")
+    headers = {"User-Agent": "version-checker"}
+    content = ""
+    
+    if "api.github.com" in url:
+        headers["Accept"] = "application/vnd.github+json"
         token = token or os.getenv("GITHUB_TOKEN")
         if token:
             headers["Authorization"] = f"Bearer {token}"
         
-        params = {"page": 1, "per_page": 100}
+        resp = requests.get(url, headers=headers, timeout=15)
         
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
-        
-        # 处理 rate limit
         if resp.status_code == 403:
             remaining = resp.headers.get("X-RateLimit-Remaining")
             reset = resp.headers.get("X-RateLimit-Reset")
@@ -361,75 +353,60 @@ def get_latest_version_from_github(url: str, prefix: str = "", token: str | None
                 raise RuntimeError(
                     f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
                 )
-            # 其它 403
             raise RuntimeError(f"GitHub API 403: {resp.text}")
         
         if resp.status_code != 200:
             raise RuntimeError(f"GitHub API 请求失败: {resp.status_code}, {resp.text}")
         
         data = resp.json()
-        for tag in data:
-            name = tag.get("name", "")
-            # openssl tag 可能是 "openssl-3.0.16" 这种
-            v = name.split("-")[-1]
-            if v.startswith(prefix) and re.fullmatch(r"\d+\.\d+\.\d+", v):
-                tags.append(v)
-        
-        if not tags:
-            raise ValueError(f"未找到前缀为 {prefix} 的版本")
-        
-        return max(tags, key=version.parse)
-    
-    elif source_type == "openssh":
-        sess = requests.Session()
-        
-        def key(v: str):
-            m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
-            return tuple(int(x or 0) for x in m.groups()) if m else (-1, -1, -1, -1)
-        
-        def extract(html: str):
-            vers = re.findall(r"openssh-((?:\d+\.)+\d+p\d+)\.tar\.gz", html)
-            vers = [v for v in vers if v.startswith(prefix)]
-            return vers
-        
-        try:
-            r = sess.get(url, headers={"Range": "bytes=0-65535"}, timeout=(2, 5))
-            r.raise_for_status()
-            vers = extract(r.text)
-            if vers:
-                return max(vers, key=key)
-        except Exception:
-            pass
-        
-        r = sess.get(url, timeout=(2, 10))
-        r.raise_for_status()
-        vers = extract(r.text)
-        if not vers:
-            raise ValueError(f"未找到前缀为 {prefix} 的版本")
-        return max(vers, key=key)
+        content = " ".join([tag.get("name", "") for tag in data])
     
     else:
-        raise ValueError(f"不支持的源类型: {source_type}")
-
-def get_stable_version_from_github(url, prefix=None):
-    tags = []
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise RuntimeError(f"GitHub API 请求失败: {response.status_code}")
-    data = response.json()
-    for tag in data:
-        name = tag["name"].split("-")[-1]
-        if prefix:
-            if name.startswith(prefix):
-                ver_math = re.match(r"^(\d+\.\d+\.\d+)$", name)
-                if ver_math:
-                    tags.append(name)
-        else:
-            tags.append(name)
-
-    if not tags:
+        sess = requests.Session()
+        
+        try:
+            r = sess.get(url, headers={"Range": "bytes=0-65535", **headers}, timeout=(2, 5))
+            r.raise_for_status()
+            content = r.text
+        except Exception:
+            r = sess.get(url, headers=headers, timeout=(2, 10))
+            r.raise_for_status()
+            content = r.text
+    
+    versions = []
+    
+    version_patterns = [
+        r"(\d+\.\d+\.\d+)",  # x.y.z
+        r"(\d+\.\d+)",       # x.y
+        r"((?:\d+\.)+\d+p\d+)",  # x.y.zpN (OpenSSH 格式)
+        r"v(\d+\.\d+\.\d+)", # vx.y.z
+    ]
+    
+    for pattern in version_patterns:
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        for match in matches:
+            if isinstance(match, tuple):
+                match = match[0] if match[0] else match[1]
+            
+            version_str = match.strip().lstrip('v')
+            
+            if version_str.startswith(prefix):
+                versions.append(version_str)
+    
+    versions = list(set(versions))
+    
+    if not versions:
         raise ValueError(f"未找到前缀为 {prefix} 的版本")
+    
+    def version_key(v: str):
+        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
+        if m:
+            return tuple(int(x or 0) for x in m.groups())
+        try:
+            return tuple(map(int, v.split('.')))
+        except ValueError:
+            return (-1, -1, -1, -1)
+    
+    latest_version = max(versions, key=version_key)
+    return latest_version
 
-    # 使用 packaging.version 排序，返回最大值
-    latest = max(tags)
-    return latest.lstrip('v')
