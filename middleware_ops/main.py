@@ -12,11 +12,11 @@ operations = {
 
 def run(clients):
     print(Style.BRIGHT + "-" * 40)
-    print_info("开始执行软件管理操作")
+    print_info("开始执行中间件管理操作")
     print(Style.BRIGHT + "-" * 40)
 
     while True:
-        print(Style.BRIGHT + Fore.BLUE + "\n=== 软件管理菜单 ===")
+        print(Style.BRIGHT + Fore.BLUE + "\n========== 中间件管理菜单 ==========")
         for key, (desc, _) in operations.items():
             print(f"{key}. {desc}")
         print("0. 退出")
@@ -24,7 +24,7 @@ def run(clients):
         choice = input(Fore.MAGENTA + "请输入操作编号: ").strip()
 
         if choice == "0":
-            print_info("退出软件管理操作。")
+            print_info("退出中间件管理操作。")
             break
 
         if choice not in operations:

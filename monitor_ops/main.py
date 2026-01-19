@@ -16,7 +16,7 @@ def run(clients):
     print(Style.BRIGHT + "-" * 40)
 
     while True:
-        print(Style.BRIGHT + Fore.BLUE + "\n=== 监控管理菜单 ===")
+        print(Style.BRIGHT + Fore.BLUE + "\n========== 监控管理菜单 ==========")
         for key, (desc, _) in operations.items():
             print(f"{key}. {desc}")
         print("0. 退出")
