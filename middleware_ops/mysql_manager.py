@@ -5,10 +5,10 @@ from colorama import Fore
 from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_latest_version
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
+from utils.choice import confirm_yes_no, menu_choice
 
 def install_mysql8(client):
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否安装？", default=False):
         default_install_path = "/usr/local/mysql" + '.'.join(latest_version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入MySQL安装目录 (默认: {default_install_path}): ").strip()
         if not install_path:
@@ -81,8 +81,7 @@ def install_mysql8(client):
             current_version = current_version.strip() if current_version else ""
             print_info("\n安装完成！\n当前mysql版本：" + current_version)
             
-            choice = input(Fore.MAGENTA + f"是否自动配置my.cnf文件？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否自动配置my.cnf文件？", default=False):
                 print_success("正在配置my.cnf文件...")
                 local_path = os.path.join("config", "mysql", "my.cnf")
                 remote_path = "/etc/my.cnf"
@@ -94,8 +93,7 @@ def install_mysql8(client):
             else:
                 print_warning("→ 已跳过my.cnf文件配置")
 
-            choice = input(Fore.MAGENTA + f"是否初始化MySQL服务？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否初始化MySQL服务？", default=False):
                 print_success("正在初始化MySQL服务，请稍候...")
                 run_command_live(client, install_path + "/bin/mysqld --initialize --user=mysql")
                 print_success("✓ MySQL服务初始化完成")
@@ -104,8 +102,7 @@ def install_mysql8(client):
             else:
                 print_warning("→ 已跳过MySQL服务初始化")
 
-            choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否配置systemd守护进程？", default=False):
                 print_success("正在配置systemd守护进程...")
                 local_path = os.path.join("config", "mysql", "mysqld.service")
                 remote_path = "/etc/systemd/system/mysqld.service"
@@ -115,16 +112,14 @@ def install_mysql8(client):
             else:
                 print_warning("→ 已跳过systemd守护进程配置")
 
-            choice = input(Fore.MAGENTA + f"是否为MySQL服务配置开机自启动？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否为MySQL服务配置开机自启动？", default=False):
                 print_success("正在配置开机自启动...")
                 run_command_live(client, "systemctl enable mysqld")
                 print_success("✓ MySQL服务开机自启动配置完成")
             else:
                 print_warning("→ 已跳过开机自启动配置")
 
-            choice = input(Fore.MAGENTA + f"是否启动MySQL服务？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否启动MySQL服务？", default=False):
                 print_success("正在启动MySQL服务...")
                 _, status = run_command_live(client, "systemctl start mysqld")
                 if status != 0:
@@ -150,8 +145,7 @@ def upgrade_mysql8(client):
     backup_info = backup_mysql(client)
     if backup_info is None:
         print_warning("备份失败，是否继续升级？")
-        choice = input(Fore.MAGENTA + "继续升级？(y/N): ").strip().lower()
-        if choice != "y":
+        if not confirm_yes_no("继续升级？", default=False):
             print_warning("取消升级操作")
             return None
     else:
@@ -160,8 +154,7 @@ def upgrade_mysql8(client):
     # 获取当前MySQL安装路径
     current_mysql_path, _, _ = run_command(client, "which mysql")
     install_path = current_mysql_path.replace("/bin/mysql", "")
-    choice = input("当前MySQL安装路径: " + install_path + "\n是否继续升级？(y/N): ").strip().lower()
-    if choice != "y":
+    if not confirm_yes_no(f"当前MySQL安装路径: {install_path}\n是否继续升级？", default=False):
         print_warning("返回上一级菜单\n")
         return None
 
@@ -190,8 +183,7 @@ def upgrade_mysql8(client):
         if cmd_status != 0 :
             print_error(f"\n命令执行失败: {cmd}")
             print_warning("升级失败，是否回滚到之前版本？")
-            choice = input(Fore.MAGENTA + "是否回滚？(y/N): ").strip().lower()
-            if choice == "y" and backup_info:
+            if confirm_yes_no("是否回滚？", default=False) and backup_info:
                 rollback_mysql(client)
             else:
                 print_warning("中止当前操作，返回上一级菜单\n")
@@ -204,8 +196,7 @@ def upgrade_mysql8(client):
         print_info("建议在非业务高峰期手动重启mysql")
         
         # 询问是否立即重启
-        restart_choice = input(Fore.MAGENTA + "是否立即重启mysql？(y/N): ").strip().lower()
-        if restart_choice == "y":
+        if confirm_yes_no("是否立即重启mysql？", default=False):
             print_info("重启mysql服务...")
             output, status = run_command_live(client, 'systemctl restart mysqld')
             if status == 0:
@@ -299,9 +290,8 @@ def backup_mysql(client):
             return None
     
     # 备份数据目录（可选，询问用户）
-    data_backup_choice = input(Fore.MAGENTA + "是否备份数据目录（可能很大，建议单独备份）？(y/N): ").strip().lower()
     data_dirs = []
-    if data_backup_choice == "y":
+    if confirm_yes_no("是否备份数据目录（可能很大，建议单独备份）？", default=False):
         print_info("备份数据目录...")
         # 常见的数据目录位置
         possible_data_dirs = ['/data/mysql', '/var/lib/mysql', '/usr/local/mysql/data']
@@ -364,8 +354,8 @@ def rollback_mysql(client):
         else:
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
     
-    choice = input(Fore.MAGENTA + "\n请选择要回滚到的备份编号 (0取消): ").strip()
-    if choice == "0" or not choice.isdigit() or int(choice) < 1 or int(choice) > len(backup_dirs):
+    choice = menu_choice("\n请选择要回滚到的备份编号 (0取消): ", valid_choices=[str(i) for i in range(len(backup_dirs) + 1)], default="0")
+    if choice == "0":
         print_warning("取消回滚操作")
         return
     
@@ -388,8 +378,7 @@ def rollback_mysql(client):
     # 确认回滚
     print_warning(f"即将回滚mysql到版本 {backup_info['version']}")
     print_warning("这将覆盖当前的mysql安装")
-    confirm = input(Fore.MAGENTA + "确认回滚？(y/N): ").strip().lower()
-    if confirm != "y":
+    if not confirm_yes_no(f"即将回滚mysql到版本 {backup_info['version']}\n这将覆盖当前的mysql安装\n确认回滚？", default=False):
         print_warning("取消回滚操作")
         return
     
@@ -451,8 +440,7 @@ def rollback_mysql(client):
         print_error("回滚后mysql无法正常启动")
     
     # 询问是否启动mysql
-    start_choice = input(Fore.MAGENTA + "是否启动mysql服务？(y/N): ").strip().lower()
-    if start_choice == "y":
+    if confirm_yes_no("是否启动mysql服务？", default=False):
         print_info("启动mysql服务...")
         output, status = run_command_live(client, 'systemctl start mysqld')
         if status == 0:
@@ -500,7 +488,7 @@ def manage_mysql(client):
         if status != 0 or not current_version or current_version == "":
             print("1. 安装 Mysql 8.0 最新发行版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ")
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
             if choice == "1":
                 install_mysql8(client)
             elif choice == "0":
@@ -516,7 +504,7 @@ def manage_mysql(client):
             print("3. 回滚 Mysql 到之前版本")
             print("4. 查看所有备份")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
             if choice == "1":
                 upgrade_mysql8(client)
             elif choice == "2":

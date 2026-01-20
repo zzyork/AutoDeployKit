@@ -6,13 +6,13 @@ from utils.file_utils import get_latest_version, download_file, upload_file, upl
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.server_utils import is_valid_ip
+from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_mysqld_exporter(client):
     latest_version = get_latest_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
     print_info("mysqld_exporter最新发行版为：" + latest_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装mysqld_exporter " + latest_version + "......")
 
         local_path = os.path.join("packages", "mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz")
@@ -91,8 +91,7 @@ def install_mysqld_exporter(client):
                     print_error(f"错误信息: {err.strip()}")
 
             # 询问是否更新Prometheus配置
-            choice = input(Fore.MAGENTA + f"\n是否自动更新Prometheus配置以添加MySQL监控？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("\n是否自动更新Prometheus配置以添加MySQL监控？", default=False):
                 update_prometheus_config(client, db_host)
 
             print_info("\n安装完成！")

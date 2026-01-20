@@ -8,18 +8,17 @@ from colorama import Fore
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import download_file, upload_file, get_latest_version
+from utils.choice import confirm_yes_no, menu_choice
 import re
 
 def upgrade_openssh(client):
-    choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否升级？", default=False):
         # 先备份当前版本
         print_info("升级前备份当前OpenSSH版本...")
         backup_info = backup_openssh(client)
         if backup_info is None:
             print_warning("！！！备份失败，是否继续升级？")
-            choice = input(Fore.MAGENTA + "继续升级？(y/N): ").strip().lower()
-            if choice != "y":
+            if not confirm_yes_no("继续升级？", default=False):
                 print_warning("取消升级操作")
                 return None
         else:
@@ -83,15 +82,12 @@ def upgrade_openssh(client):
 
         current_openssl_version, error, status = run_command(client, 'openssl version')
         print_info("\n当前OpenSSL版本为：" + current_openssl_version)
-        choice = input(Fore.MAGENTA + f"\n是否已升级OpenSSL？(y/N): ").strip().lower()
-        openssl_upgraded = 0
-        if choice == "y":
+        if confirm_yes_no("\n是否已升级OpenSSL？", default=False):
             openssl_upgraded = 1
             openssl_path, error, status = run_command(client, 'ls -d /usr/local/*ssl*')
             openssl_path = openssl_path.strip()
         else:
-            choice = input(Fore.MAGENTA + f"是否升级OpenSSL？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否升级OpenSSL？", default=False):
                 print_info("调用OpenSSL升级工具...")
                 from server_ops.openssl_upgrade import upgrade_openssl_v3, upgrade_openssl_1_1_1
                 if current_openssl_version.startswith("OpenSSL 1.1.1"):
@@ -226,8 +222,7 @@ def upgrade_openssh(client):
         print_info("建议在非业务高峰期手动重启sshd服务")
         
         # 询问是否立即重启
-        restart_choice = input(Fore.MAGENTA + "是否立即重启sshd服务？(y/N): ").strip().lower()
-        if restart_choice == "y":
+        if confirm_yes_no("是否立即重启sshd服务？", default=False):
             print_info("重启sshd服务...")
             output, status = run_command_live(client, '/etc/init.d/sshd restart')
             if status == 0:
@@ -483,8 +478,7 @@ def rollback_openssh(client):
     # 确认回滚
     print_warning(f"即将回滚OpenSSH到版本 {backup_info['version']}")
     print_warning("这将覆盖当前的OpenSSH安装")
-    confirm = input(Fore.MAGENTA + "确认回滚？(y/N): ").strip().lower()
-    if confirm != "y":
+    if not confirm_yes_no(f"即将回滚OpenSSH到版本 {backup_info['version']}\n这将覆盖当前的OpenSSH安装\n确认回滚？", default=False):
         print_warning("取消回滚操作")
         return
     
@@ -554,8 +548,7 @@ def rollback_openssh(client):
         print_error("回滚后OpenSSH无法正常启动")
     
     # 询问是否启动SSH
-    start_choice = input(Fore.MAGENTA + "是否启动SSH服务？(y/N): ").strip().lower()
-    if start_choice == "y":
+    if confirm_yes_no("是否启动SSH服务？", default=False):
         print_info("启动SSH服务...")
         output, status = run_command_live(client, 'systemctl start sshd')
         if status == 0:

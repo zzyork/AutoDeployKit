@@ -1,5 +1,6 @@
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
+from utils.choice import confirm_yes_no, menu_choice
 from colorama import Fore
 
 
@@ -17,8 +18,7 @@ def check_and_disable_firewalld(client):
         print_success("firewalld 已处于关闭状态")
         return
 
-    choice = input(Fore.MAGENTA + "是否关闭并禁用自启 firewalld？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否关闭并禁用自启 firewalld？", default=False):
         print_info("正在关闭并禁用 firewalld ...")
         _, status = run_command_live(client, "systemctl stop firewalld && systemctl disable firewalld")
         if status == 0:
@@ -44,8 +44,7 @@ def disable_selinux(client):
         print_success("SELinux 已处于关闭状态")
         return
 
-    choice = input(Fore.MAGENTA + "是否禁用 SELinux？(y/N): ").strip().lower()
-    if choice != "y":
+    if confirm_yes_no("是否禁用 SELinux？", default=False):
         print_warning("保留 SELinux 当前状态")
         return
     print_info("正在设置 SELinux 为 disabled ...")

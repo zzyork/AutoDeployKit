@@ -4,11 +4,11 @@ from colorama import Fore
 from utils.file_utils import download_file, upload_file, get_latest_version
 from utils.output import print_info, print_error, print_warning
 from utils.ssh_utils import run_command, run_command_live
+from utils.choice import confirm_yes_no
 
 def install_docker(client):
     print_info("docker最新发行版为：" + latest_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装docker " + latest_version + "......\n")
 
         print_info("开始下载源码包并编译安装")
@@ -26,7 +26,7 @@ def install_docker(client):
             try:
                 download_file(url, local_path)
                 upload_file(client, local_path, remote_path)
-                print_success("本地上传成功")
+                print_info("本地上传成功")
             except RuntimeError as e:
                 print_error(f"本地上传也失败，中止安装: {e}")
                 print_warning("返回上一级菜单\n")
@@ -46,8 +46,7 @@ def install_docker(client):
                 break
 
         # TODO 调整修复docker部署
-        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置systemd守护进程？", default=False):
             local_path = os.path.join("config", "docker", "docker.service")
             remote_path = "/etc/systemd/system/docker.service"
             upload_file(client, local_path, remote_path)

@@ -3,6 +3,7 @@ from colorama import Fore
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import upload_file_with_vars
+from utils.choice import confirm_yes_no, menu_choice
 
 def upgrade_packages(client):
     print_info("正在升级系统软件包 ...")
@@ -182,8 +183,7 @@ def delete_yum_repo(client):
             filepath = repos[selected_repo]["file"]
             
             # 确认删除
-            confirm = input(Fore.MAGENTA + f"确定要删除yum源 '{selected_repo}' 吗? (y/N): " + Fore.RESET).strip().lower()
-            if confirm in ['y', 'yes']:
+            if confirm_yes_no(f"确定要删除yum源 '{selected_repo}' 吗?", default=False):
                 # 检查文件中有多少个源
                 repos_in_file = []
                 for repo_name, repo_info in repos.items():

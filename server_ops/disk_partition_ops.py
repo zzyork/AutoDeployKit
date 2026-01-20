@@ -2,6 +2,7 @@ from importlib import import_module
 from utils import output
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
+from utils.choice import confirm_yes_no, menu_choice
 from colorama import Fore
 
 VG_NAME = "vg_data"
@@ -55,8 +56,7 @@ def create_lvm_and_mount(client, disk):
             print_error(f"执行失败: {cmd}")
             return
     
-    choice = input("新磁盘已分区并创建 LVM，是否挂载？(y/N): ").strip().lower()
-    if choice != "y":
+    if not confirm_yes_no("新磁盘已分区并创建 LVM，是否挂载？", default=False):
         return
     
     MOUNT_POINT = input("请输入挂载点(/data): ").strip()
@@ -73,8 +73,7 @@ def create_lvm_and_mount(client, disk):
             print_error(f"执行失败: {cmd}")
             return
 
-    choice = input("是否开机自动挂载？(y/N): ").strip().lower()
-    if choice != "y":
+    if not confirm_yes_no("是否开机自动挂载？", default=False):
         return
     
     output, status = run_command_live(client, f'echo "/dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT} xfs defaults 0 0" >> /etc/fstab')
@@ -102,8 +101,7 @@ def manage_disk_partition(client):
         return
 
     disk = unmounted_disks[int(choice) - 1]
-    confirm = input(Fore.RED + f"⚠️ 确定要对 {disk} 分区并清空其数据？(y/N): ").strip().lower()
-    if confirm == "y":
+    if confirm_yes_no(f"⚠️ 确定要对 {disk} 分区并清空其数据？", default=False):
         create_lvm_and_mount(client, disk)
     else:
         print_warning("已取消该磁盘处理")

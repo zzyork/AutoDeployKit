@@ -4,11 +4,11 @@ from colorama import Fore
 from utils.file_utils import download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
+from utils.choice import confirm_yes_no, menu_choice
 
 def install_minio(client):
     print_info("Minio最新稳定版为：" + latest_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装minio " + latest_version + "......\n")
         
         default_install_path = "/usr/local/minio2504"
@@ -68,8 +68,7 @@ def install_minio(client):
                 break
 
         
-        choice = input(Fore.MAGENTA + f"是否自动配置minio.conf配置？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否自动配置minio.conf配置？"):
             print_info("正在配置minio.conf文件...")
             local_path = os.path.join("config", "minio", "minio.conf")
             remote_path = install_path + "/minio.conf"
@@ -79,8 +78,7 @@ def install_minio(client):
             run_command(client, "chown minio:minio " + install_path + "/minio.conf")
             print_success("minio.conf文件配置完成\n")
 
-        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置systemd守护进程？"):
             local_path = os.path.join("config", "minio", "minio.service")
             remote_path = "/etc/systemd/system/minio.service"
             upload_file_with_vars(client, local_path, remote_path, {'MINIO_INSTALL_PATH': install_path})
@@ -90,21 +88,18 @@ def install_minio(client):
             else:
                 print_error("systemd守护进程配置失败")
 
-        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程自启？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置systemd守护进程自启？"):
             run_command_live(client, "systemctl enable minio")
             print_success("systemd守护进程自启配置完成\n")
 
-        choice = input(Fore.MAGENTA + f"是否启动Minio服务？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否启动Minio服务？"):
             run_command_live(client, "systemctl start minio")
             print_success("Minio服务启动完成\n")
 
         # 检查firewalld状态并开放端口
         firewalld_status, _, _ = run_command(client, "systemctl is-active firewalld 2>&1")
         if firewalld_status.strip() == "active":
-            choice = input(Fore.MAGENTA + f"检测到firewalld防火墙已开启，是否添加放行规则？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("检测到firewalld防火墙已开启，是否添加放行规则？"):
                 print_info("检测到firewalld已开启，正在开放Minio端口...")
                 run_command(client, "firewall-cmd --permanent --add-port=9000/tcp")
                 run_command(client, "firewall-cmd --permanent --add-port=9001/tcp")
@@ -133,13 +128,11 @@ def manage_minio(client):
         if current_version == "":
             print("1. 安装 minio 最新稳定版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice(valid_choices=['1', '0'], default="0", prompt_message="请选择操作编号(默认0): ",)
             if choice == "1":
                 install_minio(client)
             elif choice == "0":
                 break
-            else:
-                print("无效选项，请重新输入")
         else:
             print("已安装minio，版本：" + current_version)
             break

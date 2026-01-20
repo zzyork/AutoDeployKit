@@ -6,6 +6,7 @@ from colorama import Fore
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import download_file, upload_file, get_latest_version
+from utils.choice import confirm_yes_no, menu_choice
 import requests
 import re
 from packaging import version
@@ -50,8 +51,7 @@ def upgrade_openssl_1_1_1(client):
     return None
 
 def upgrade_openssl_v3(client):
-    choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否升级？", default=False):
         print_info("升级 OpenSSL 到 " + latest_version)
 
         print_info("安装perl依赖")

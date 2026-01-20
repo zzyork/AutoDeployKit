@@ -5,6 +5,7 @@ from colorama import Fore
 from utils.file_utils import get_latest_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
+from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_prometheus(client):
@@ -17,8 +18,7 @@ def install_prometheus(client):
         pass
     stable_version = get_latest_version("https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5")
     print_info("Prometheus最新发行版为：" + stable_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice != "y":
+    if not confirm_yes_no("是否安装？", default=False):
         print_warning("→ 已跳过安装")
         return None
     default_install_path = "/usr/local/prometheus" + '.'.join(stable_version.split('.')[:2])
@@ -86,8 +86,7 @@ def install_prometheus(client):
             break
 
     if cmd_status == 0:
-        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置systemd守护进程？", default=False):
             local_path = os.path.join("config", "prometheus", "prometheus.service")
             remote_path = "/etc/systemd/system/prometheus.service"
             run_command(client, "mkdir -p /data/prometheus")
@@ -97,15 +96,13 @@ def install_prometheus(client):
         else:
             print_warning("→ 已跳过systemd守护进程配置\n")
 
-        choice = input(Fore.MAGENTA + f"是否配置开机自启动？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置开机自启动？", default=False):
             run_command(client, "systemctl enable prometheus")
             print_success("✓ 开机自启动配置完成")
         else:
             print_warning("→ 已跳过开机自启动配置")
 
-        choice = input(Fore.MAGENTA + f"是否启动Prometheus服务？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否启动Prometheus服务？", default=False):
             run_command(client, "systemctl start prometheus")
             print_success("✓ Prometheus服务启动完成")
         else:
