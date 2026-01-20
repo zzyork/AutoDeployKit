@@ -1,10 +1,8 @@
 import os
-from colorama import Fore
-
 from utils.file_utils import download_file, upload_file, get_latest_version
-from utils.output import print_info, print_error, print_warning
+from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
-from utils.choice import confirm_yes_no
+from utils.choice import confirm_yes_no, menu_choice
 
 def install_docker(client):
     print_info("docker最新发行版为：" + latest_version)
@@ -83,13 +81,13 @@ def manage_docker(client):
         if current_version == "":
             print("1. 安装 docker 最新发行版")
             print("0. 返回/跳过")
-        choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
-        if choice == "1":
-            install_docker(client)
-        elif choice == "0":
-            break
-        else:
-                print("无效选项，请重新输入")
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
+            if choice == "1":
+                install_docker(client)
+            elif choice == "0":
+                break
+            else:
+                    print("无效选项，请重新输入")
         else:
             print("已安装docker，版本：" + current_version)
             break
