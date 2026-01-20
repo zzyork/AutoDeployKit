@@ -101,10 +101,6 @@ def load_hosts(pattern, filename="hosts"):
 
 def main():
     args = sys.argv[1:]
-    dry_run = False
-    if "--dry-run" in args:
-        dry_run = True
-        args.remove("--dry-run")
 
     if len(args) != 2:
         print("用法: python cli.py <module_name> <host_pattern>")
@@ -147,10 +143,10 @@ def main():
         sys.exit(1)
 
     try:
-        try:
-            module.run(clients, dry_run=dry_run)
-        except TypeError:
-            module.run(clients)
+        module.run(clients)
+    except TypeError:
+        print(f"错误：模块 {module_name}.run() 函数参数不匹配")
+        sys.exit(1)
     finally:
         for _, client in clients:
             close_ssh_client(client)

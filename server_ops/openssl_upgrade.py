@@ -130,12 +130,14 @@ def manage_ssl(client):
         print("=== OpenSSL升级操作 ===")
         if current_version.startswith("OpenSSL 1.1.1"):
             print("1. 升级 OpenSSL 到 1.1.1w")
+            print("0. 返回/跳过")
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
         elif current_version.startswith("OpenSSL 3.0"):
             print("1. 升级 OpenSSL 到 v3.0.* 最新发行版")
             print("2. 修复 libssl.so.3 缺失问题")
             print("3. 安装 perl-CPAN（解决 IPC/Cmd.pm 缺失）")
-        print("0. 返回/跳过")
-        choice = input("请选择操作编号: ").strip()
+            print("0. 返回/跳过")
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '0'], default="0")
         if choice == "1":
             if current_version.startswith("OpenSSL 1.1.1"):
                 upgrade_openssl_1_1_1(client)

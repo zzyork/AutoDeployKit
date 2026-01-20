@@ -59,12 +59,12 @@ def create_lvm_and_mount(client, disk):
     if not confirm_yes_no("新磁盘已分区并创建 LVM，是否挂载？", default=False):
         return
     
-    MOUNT_POINT = input("请输入挂载点(/data): ").strip()
+    mount_point = input("请输入挂载点(/data): ").strip()
     
     cmds = [
-        f"mkdir -p {MOUNT_POINT}",
-        f"mount /dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT}",
-        f"echo \"/dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT} xfs defaults 0 0\" >> /etc/fstab"
+        f"mkdir -p {mount_point}",
+        f"mount /dev/{VG_NAME}/{LV_NAME} {mount_point}",
+        f"echo \"/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0\" >> /etc/fstab"
     ]
 
     for cmd in cmds:
@@ -76,12 +76,12 @@ def create_lvm_and_mount(client, disk):
     if not confirm_yes_no("是否开机自动挂载？", default=False):
         return
     
-    output, status = run_command_live(client, f'echo "/dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT} xfs defaults 0 0" >> /etc/fstab')
+    output, status = run_command_live(client, f'echo "/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0" >> /etc/fstab')
     if status != 0:
         print_error(f"执行失败: {cmd}")
         return
 
-    print_success(f"{disk} 已完成 LVM 创建并挂载到 {MOUNT_POINT}")
+    print_success(f"{disk} 已完成 LVM 创建并挂载到 {mount_point}")
 
 def manage_disk_partition(client):
     print(Fore.BLUE + "\n=== 磁盘分区与挂载配置 ===")

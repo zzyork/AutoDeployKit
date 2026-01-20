@@ -424,7 +424,7 @@ def manage_nginx(client):
         if status != 0 or not current_version or current_version == "":
             print("1. 安装 Nginx 最新发行版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
             if choice == "1":
                 install_nginx(client)
             elif choice == "0":
@@ -439,7 +439,7 @@ def manage_nginx(client):
             print("3. 回滚 Nginx 到之前版本")
             print("4. 查看所有备份")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
             if choice == "1":
                 upgrade_nginx(client)
             elif choice == "2":

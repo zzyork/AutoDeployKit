@@ -83,12 +83,12 @@ def manage_docker(client):
         if current_version == "":
             print("1. 安装 docker 最新发行版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
-            if choice == "1":
-                install_docker(client)
-            elif choice == "0":
-                break
-            else:
+        choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
+        if choice == "1":
+            install_docker(client)
+        elif choice == "0":
+            break
+        else:
                 print("无效选项，请重新输入")
         else:
             print("已安装docker，版本：" + current_version)

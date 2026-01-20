@@ -241,11 +241,11 @@ def manage_yum_repos(client):
         print("3. 删除yum源")
         print("4. 返回")
 
-        op = input(Fore.MAGENTA + "请输入操作编号: " + Fore.RESET).strip()
+        choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '0'], default="0")
 
-        if op == "1":
+        if choice == "1":
             add_yum_repo(client)
-        elif op == "2":
+        elif choice == "2":
             repo_names = list(repos.keys())
             print_info("repo列表：")
             for i, name in enumerate(repo_names, 1):
@@ -277,17 +277,17 @@ def manage_packages(client):
         print("4. 管理yum源")
         print("0. 返回")
 
-        op = input(Fore.MAGENTA + "请输入操作编号: " + Fore.RESET).strip()
+        choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
 
-        if op == "1":
+        if choice == "1":
             upgrade_packages(client)
-        elif op == "2":
+        elif choice == "2":
             install_base_deps(client)
-        elif op == "3":
+        elif choice == "3":
             install_base_tools(client)
-        elif op == "4":
+        elif choice == "4":
             manage_yum_repos(client)
-        elif op == "0":
+        elif choice == "0":
             break
         else:
             print_warning("无效选项，请重新输入")
