@@ -45,7 +45,6 @@ def install_docker(client):
                 print_warning("中止当前操作，返回上一级菜单\n")
                 break
 
-        # TODO 调整修复docker部署
         if confirm_yes_no("是否配置systemd守护进程？", default=False):
             local_path = os.path.join("config", "docker", "docker.service")
             remote_path = "/etc/systemd/system/docker.service"
@@ -53,11 +52,19 @@ def install_docker(client):
             local_path = os.path.join("config", "docker", "docker.socket")
             remote_path = "/etc/systemd/system/docker.socket"
             upload_file(client, local_path, remote_path)
-            cmds = [
-                "systemctl daemon-reload",
-                "systemctl enable --now docker",
-            ]
-            print_info("systemd守护进程配置完成")
+            _, _, cmd_status = run_command(client, "systemctl daemon-reload")
+            if cmd_status == 0:
+                print_success("systemd守护进程配置完成\n")
+            else:
+                print_error("systemd守护进程配置失败")
+
+        if confirm_yes_no("是否配置systemd守护进程自启？"):
+            run_command_live(client, "systemctl enable docker")
+            print_success("systemd守护进程自启配置完成\n")
+
+        if confirm_yes_no("是否启动Docker服务？"):
+            run_command_live(client, "systemctl start docker")
+            print_success("Docker服务启动完成\n")
         print_info("安装完成！当前docker版本：" + current_version)
 
     else:

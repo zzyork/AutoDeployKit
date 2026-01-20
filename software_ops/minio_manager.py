@@ -57,6 +57,7 @@ def install_minio(client):
         cmds = [
             "cp -r " + remote_path + " " + install_path + "/bin/minio",
             "chmod +x " + install_path + "/bin/minio",
+            "ln -fs " + install_path + "/bin/minio /usr/local/bin/minio"
         ]
 
         cmd_status = 0
@@ -108,7 +109,7 @@ def install_minio(client):
         else:
             print_info("firewalld未开启或状态异常，跳过端口配置")
         
-        current_version, _, _ = run_command(client, r"/usr/local/minio2504/bin/minio -v 2>&1| grep RELEASE | awk '{print $3}'")
+        current_version, _, _ = run_command(client, r"minio -v 2>&1| grep RELEASE | awk '{print $3}'")
         current_version = current_version.strip() if current_version else ""
         print_info(f"安装完成！当前Minio版本: {current_version}")
 
@@ -120,7 +121,7 @@ def install_minio(client):
 def manage_minio(client):
     global current_version, status, latest_version
     latest_version = "RELEASE.2025-04-22T22-12-26Z"
-    current_version, _, status = run_command(client, r"/usr/local/minio2504/bin/minio -v 2>&1| grep RELEASE | awk '{print $3}'")
+    current_version, _, status = run_command(client, r"minio -v 2>&1| grep RELEASE | awk '{print $3}'")
     current_version = current_version.strip() if current_version else ""
     print_info("Minio最新稳定版：" + latest_version)
     while True:

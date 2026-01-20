@@ -4,10 +4,12 @@ import sys
 import tempfile
 import time
 from string import Template
+import hashlib
+import difflib
 
 import requests
-from packaging import version
 from utils.output import print_error, print_info
+from utils.ssh_utils import run_command
 
 def get_local_md5(filepath):
     """计算本地文件的 MD5 哈希值"""
@@ -17,7 +19,6 @@ def get_local_md5(filepath):
 def get_remote_md5(client, remote_path):
     output, _, _ = run_command(client, f"md5sum {remote_path} | awk '{{print $1}}'")
     return output.strip()
-
 
 def download_file(url, dest):
     if os.path.exists(dest):

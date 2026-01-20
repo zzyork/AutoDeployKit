@@ -1,6 +1,7 @@
 import importlib
 import sys
 import configparser
+import shlex
 
 from utils.ssh_utils import close_ssh_client, ssh_connect
 
@@ -66,10 +67,10 @@ def load_hosts(pattern, filename="hosts"):
         if line[1]:
             try:
                 param_string = line[1]
-                param_string = param_string.replace('keyfile"', 'keyfile="')
-                param_string = param_string.replace('proxy_keyfile"', 'proxy_keyfile="')
+                # Use shlex.split() to properly handle quotes and spaces
+                param_items = shlex.split(param_string)
                 
-                for item in param_string.split():
+                for item in param_items:
                     if '=' not in item:
                         continue
                     k, v = item.split("=", 1)
