@@ -1,7 +1,4 @@
 import os
-import re
-
-import requests
 from colorama import Fore
 
 from utils.file_utils import download_file, upload_file, get_latest_version
@@ -34,7 +31,7 @@ def install_docker(client):
                 print_error(f"本地上传也失败，中止安装: {e}")
                 print_warning("返回上一级菜单\n")
                 return None
-        upload_file(client, local_path, remote_path)
+                
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
             "cp /usr/local/src/docker/* /usr/bin/",
@@ -48,21 +45,21 @@ def install_docker(client):
                 print_warning("中止当前操作，返回上一级菜单\n")
                 break
 
-        if cmd_status == 0:
-            choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-            if choice == "y":
-                local_path = os.path.join("config", "docker", "docker.service")
-                remote_path = "/etc/systemd/system/docker.service"
-                upload_file(client, local_path, remote_path)
-                local_path = os.path.join("config", "docker", "docker.socket")
-                remote_path = "/etc/systemd/system/docker.socket"
-                upload_file(client, local_path, remote_path)
-                cmds = [
-                    "systemctl daemon-reload",
-                    "systemctl enable --now docker",
-                ]
-                print_info("systemd守护进程配置完成")
-            print_info("安装完成！当前docker版本：" + current_version)
+        # TODO 调整修复docker部署
+        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
+        if choice == "y":
+            local_path = os.path.join("config", "docker", "docker.service")
+            remote_path = "/etc/systemd/system/docker.service"
+            upload_file(client, local_path, remote_path)
+            local_path = os.path.join("config", "docker", "docker.socket")
+            remote_path = "/etc/systemd/system/docker.socket"
+            upload_file(client, local_path, remote_path)
+            cmds = [
+                "systemctl daemon-reload",
+                "systemctl enable --now docker",
+            ]
+            print_info("systemd守护进程配置完成")
+        print_info("安装完成！当前docker版本：" + current_version)
 
     else:
         print_warning(f"返回上一级")

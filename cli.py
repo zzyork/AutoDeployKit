@@ -106,9 +106,9 @@ def main():
         args.remove("--dry-run")
 
     if len(args) != 2:
-        print("用法: python cli.py <module_name> <host_pattern> [--dry-run]")
+        print("用法: python cli.py <module_name> <host_pattern>")
         print("示例:")
-        print("  python cli.py server_ops webservers --dry-run")
+        print("  python cli.py server_ops webservers")
         print("  python cli.py server_ops 192.168.1.10")
         print("  python cli.py server_ops 192.168.1.10,192.168.1.11")
         print("  python cli.py server_ops all")

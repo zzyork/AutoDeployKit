@@ -200,7 +200,7 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
     rendered = template.safe_substitute(variables)
 
     # 3. 写入到临时文件
-    with tempfile.NamedTemporaryFile('w+', delete=False) as tmpfile:
+    with tempfile.NamedTemporaryFile('w+', delete=False, encoding='utf-8') as tmpfile:
         tmpfile.write(rendered)
         tmpfile_path = tmpfile.name
 
