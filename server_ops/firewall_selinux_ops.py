@@ -15,18 +15,37 @@ def check_and_disable_firewalld(client):
 
     print_info(f"当前 firewalld 状态：{status}")
     if status == "inactive":
-        print_success("firewalld 已处于关闭状态")
-        return
-
-    if confirm_yes_no("是否关闭并禁用自启 firewalld？", default=False):
-        print_info("正在关闭并禁用 firewalld ...")
-        _, status = run_command_live(client, "systemctl stop firewalld && systemctl disable firewalld")
-        if status == 0:
-            print_success("firewalld 已关闭并禁用")
+        if confirm_yes_no("\nfirewalld 处于关闭状态，是否开启？", default=False):
+            print_info("正在开启 firewalld ...")
+            _, status = run_command_live(client, "systemctl start firewalld")
+            if status == 0:
+                print_success("firewalld 已开启")
+            else:
+                print_error("开启 firewalld 失败")
+            if confirm_yes_no("\n是否配置 firewalld 开机自启？", default=False):
+                _, status = run_command_live(client, "systemctl enable firewalld")
+                if status == 0:
+                    print_success("firewalld 已配置开机自启")
+                else:
+                    print_error("配置 firewalld 开机自启失败")
         else:
-            print_error("关闭 firewalld 失败")
-    else:
-        print_warning("保留 firewalld 当前状态")
+            print_warning("保留 firewalld 当前状态")
+    elif status == "active":
+        if confirm_yes_no("\nfirewalld 处于开启状态，是否关闭？", default=False):
+            print_info("正在关闭 firewalld ...")
+            _, status = run_command_live(client, "systemctl stop firewalld")
+            if status == 0:
+                print_success("firewalld 已关闭")
+            else:
+                print_error("关闭 firewalld 失败")
+            if confirm_yes_no("\n是否关闭firewalld 开机自启？", default=False):
+                _, status = run_command_live(client, "systemctl disable firewalld")
+                if status == 0:
+                    print_success("firewalld 已配置关闭开机自启")
+                else:
+                    print_error("配置 firewalld 关闭开机自启失败")
+        else:
+            print_warning("保留 firewalld 当前状态")
 
 
 def disable_selinux(client):
