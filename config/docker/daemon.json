@@ -1,0 +1,12 @@
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
+  ],
+  "bip": "192.168.200.1/24",
+  "data-root": "/data/docker-data",
+  "log-driver":"json-file",
+  "log-opts":{
+  	"max-size" :"1g","max-file":"1"
+  }
+}
