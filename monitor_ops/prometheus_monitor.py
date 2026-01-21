@@ -2,7 +2,7 @@ import os
 
 from colorama import Fore
 
-from utils.file_utils import get_latest_version, download_file, upload_file, upload_file_with_vars
+from utils.file_utils import get_stable_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -16,7 +16,7 @@ def install_prometheus(client):
         return None
     else:
         pass
-    stable_version = get_latest_version("https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5")
+    stable_version = get_stable_version("https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5")
     print_info("Prometheus最新发行版为：" + stable_version)
     if not confirm_yes_no("是否安装？", default=False):
         print_warning("→ 已跳过安装")

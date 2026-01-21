@@ -1,5 +1,5 @@
 import os
-from utils.file_utils import download_file, upload_file, get_latest_version
+from utils.file_utils import download_file, upload_file, get_stable_version
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -74,7 +74,7 @@ def manage_docker(client):
     global current_version, status, latest_version
     current_version, _, status = run_command(client, r'docker -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
-    latest_version = get_latest_version("https://download.docker.com/linux/static/stable/x86_64/")
+    latest_version = get_stable_version("https://download.docker.com/linux/static/stable/x86_64/")
     print_info("Docker最新发行版为：" + latest_version)
     while True:
         print("=== docker软件管理 ===")

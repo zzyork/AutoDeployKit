@@ -2,7 +2,7 @@ import os
 
 from colorama import Fore
 
-from utils.file_utils import get_latest_version, download_file, upload_file, upload_file_with_vars
+from utils.file_utils import get_stable_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.server_utils import is_valid_ip
@@ -10,7 +10,7 @@ from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_mysqld_exporter(client):
-    latest_version = get_latest_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
+    latest_version = get_stable_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
     print_info("mysqld_exporter最新发行版为：" + latest_version)
     if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装mysqld_exporter " + latest_version + "......")

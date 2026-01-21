@@ -7,7 +7,7 @@ from colorama import Fore
 
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file, get_latest_version
+from utils.file_utils import download_file, upload_file, get_stable_version
 from utils.choice import confirm_yes_no, menu_choice
 import re
 
@@ -588,7 +588,7 @@ def manage_openssh(client):
     current_version = current_version.strip() if current_version else ""
     print_success("当前OpenSSH版本：" + current_version)
     try:
-        latest_version = get_latest_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
+        latest_version = get_stable_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
         print_info("OpenSSH最新发行版为：" + latest_version)
     except:
         print_warning("无法获取最新版本信息")

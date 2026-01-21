@@ -5,7 +5,7 @@ from colorama import Fore
 
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file, get_latest_version
+from utils.file_utils import download_file, upload_file, get_stable_version
 from utils.choice import confirm_yes_no, menu_choice
 import requests
 import re
@@ -14,20 +14,34 @@ from packaging import version
 def upgrade_openssl_1_1_1(client):
     print_info("升级 OpenSSL 到 1.1.1w")
 
-    print_info("安装perl依赖")
+    print_info("安装perl依赖......")
     _, err, status = run_command(client, 'yum -y install perl')
     if err:
         print_error("安装perl失败，报错信息：\n" + err)
         return None
     else:
-        print_success("perl安装完成。")
+        print_success("perl安装完成。\n")
 
-    print_info("上传源码包并开始编译安装")
+    print_info("开始下载源码包并编译安装")
+    local_path = os.path.join("packages", "openssl-1.1.1w.tar.gz")
+    remote_path = "/usr/local/src/openssl-1.1.1w.tar.gz"
+    url = "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz"
 
-    remote_pkg_path = "/usr/local/src/openssl-1.1.1w.tar.gz"
-
-    local_pkg_path = os.path.join("packages", "openssl-1.1.1w.tar.gz")
-    upload_file(client, local_pkg_path, remote_pkg_path)
+    wget_cmd = f"cd /usr/local/src && wget {url}"
+    output, wget_status = run_command_live(client, wget_cmd)
+    
+    if wget_status == 0:
+        pass
+    else:
+        print_warning("！！！下载失败，尝试本地上传")
+        try:
+            download_file(url, local_path)
+            upload_file(client, local_path, remote_path)
+            print_success("本地上传成功")
+        except RuntimeError as e:
+            print_error(f"！！！本地上传也失败，中止升级: {e}")
+            print_warning("返回上一级菜单\n")
+            return None
     cmds = [
         "tar zxf /usr/local/src/openssl-1.1.1w.tar.gz -C /usr/local/src/",
         "cd /usr/local/src/openssl-1.1.1w && ./config --prefix=/usr/local/openssl1.1 no-zlib",
@@ -46,7 +60,7 @@ def upgrade_openssl_1_1_1(client):
 
     current_version, _, _ = run_command(client, 'openssl version')
     current_version = current_version.strip() if current_version else ""
-    print_info("\n安装完成！\n当前OpenSSL版本：" + current_version)
+    print_info("升级完成！\n当前OpenSSL版本：" + current_version)
 
     return None
 
@@ -118,9 +132,9 @@ def manage_ssl(client):
     current_version = current_version.strip() if current_version else ""
     print_info("当前OpenSSL版本：" + current_version)
     if current_version.startswith("OpenSSL 1.1.1"):
-        latest_version = get_latest_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "1.1.1")
+        latest_version = "1.1.1w"
     elif current_version.startswith("OpenSSL 3.0"):
-        latest_version = get_latest_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "3.0")
+        latest_version = get_stable_version("https://api.github.com/repos/openssl/openssl/tags?page=1&per_page=50", "3.5")
     if not latest_version:
         print_error("获取最新版本失败，中止升级")
         return None

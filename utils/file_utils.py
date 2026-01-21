@@ -332,7 +332,7 @@ def compare_file_content(client, filepath, remote_path):
     except Exception as e:
         return f"比较文件内容时出错: {str(e)}"
 
-def get_latest_version(url: str, prefix: str = "") -> str:
+def get_stable_version(url: str, prefix: str = "") -> str:
     content = ""
     
     if "api.github.com" in url:
@@ -373,6 +373,14 @@ def get_latest_version(url: str, prefix: str = "") -> str:
             r.raise_for_status()
             content = r.text
     
+    if "nginx.org/en/download.html" in url:
+        # Nginx download page has a dedicated "Stable version" row.
+        m = re.search(r"Stable version.*?nginx-([0-9.]+)\.tar\.gz", content, re.IGNORECASE | re.DOTALL)
+        if m:
+            stable_version = m.group(1)
+            if not prefix or stable_version.startswith(prefix):
+                return stable_version
+
     versions = []
     
     version_patterns = [
@@ -380,6 +388,10 @@ def get_latest_version(url: str, prefix: str = "") -> str:
         r"(\d+\.\d+)",       # x.y
         r"((?:\d+\.)+\d+p\d+)",  # x.y.zpN (OpenSSH 格式)
         r"v(\d+\.\d+\.\d+)", # vx.y.z
+        r"(\d+_\d+_\d+[a-z])",  # x_y_z + a-z suffix
+        r"(\d+_\d+_\d+)",    # x_y.z
+        r"v(\d+_\d+_\d+[a-z])", # vx_y_z + a-z suffix
+        r"v(\d+_\d+_\d+)",   # vx_y_z
     ]
     
     for pattern in version_patterns:
@@ -399,13 +411,30 @@ def get_latest_version(url: str, prefix: str = "") -> str:
         raise ValueError(f"未找到前缀为 {prefix} 的版本")
     
     def version_key(v: str):
+        # Handle OpenSSH format: x.y.zpN
         m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
         if m:
             return tuple(int(x or 0) for x in m.groups())
+        
+        # Handle underscore format with letter suffix: x_y_z[a-w]
+        m = re.match(r"^(\d+)_(\d+)_(\d+)([a-z])$", v)
+        if m:
+            nums = tuple(int(x) for x in m.groups()[:3])
+            suffix = ord(m.group(4)) - ord('a')  # Convert letter to number (a=0, b=1, etc.)
+            return nums + (suffix,)
+        
+        # Handle underscore format without suffix: x_y_z
+        m = re.match(r"^(\d+)_(\d+)_(\d+)$", v)
+        if m:
+            return tuple(int(x) for x in m.groups())
+        
+        # Handle standard dot format: x.y.z or x.y
         try:
-            return tuple(map(int, v.split('.')))
+            parts = v.split('_') if '_' in v else v.split('.')
+            return tuple(map(int, parts))
         except ValueError:
             return (-1, -1, -1, -1)
     
     latest_version = max(versions, key=version_key)
-    return latest_version
+    # Convert underscores to dots for output format
+    return latest_version.replace('_', '.')

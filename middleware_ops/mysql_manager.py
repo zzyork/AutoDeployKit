@@ -2,7 +2,7 @@ import os
 import json
 import datetime
 from colorama import Fore
-from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_latest_version
+from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -483,7 +483,7 @@ def manage_mysql(client):
     global current_version, status, latest_version
     current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
-    latest_version = get_latest_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
+    latest_version = get_stable_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
     print_info("Mysql最新发行版为：" + latest_version)
     while True:
         print("=== Mysql软件管理 ===")
