@@ -1,52 +1,114 @@
 import os
 import time
-from utils.ssh_utils import run_command
+from utils import output
+from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import upload_file, get_local_md5, get_remote_md5
 from colorama import Fore
 
 def configure_ntpdate(client):
-    print_info("配置 ntpdate 时间同步服务...")
-
-    # 检查 ntpdate 是否安装
-    out, _, _ = run_command(client, "which ntpdate")
-    if not out.strip():
-        print_info("ntpdate 未安装，尝试安装...")
-        _, _, status = run_command(client, "yum install -y ntpdate")
-        if status != 0:
-            print_error("安装 ntpdate 失败，请手动检查")
-            return
+    print_info("配置时间同步服务...")
 
     ntp_server = "ntp.aliyun.com"
-    out, err, status = run_command(client, f"ntpdate {ntp_server}")
-    if "adjust time" in out or "step time" in out or status == 0:
-        print_success(f"时间同步成功，使用服务器 {ntp_server}")
-    else:
-        print_warning(f"ntpdate 同步失败，输出：{out.strip()}")
 
-    cron_line = f"0 3 * * * /usr/sbin/ntpdate {ntp_server} >/dev/null 2>&1"
-    tmp_cron = "/tmp/crontab.tmp"
-
-    # 导出当前 crontab 到临时文件，忽略无 crontab 报错
-    run_command(client, f"crontab -l > {tmp_cron} || true")
-
-    # 判断是否已有相同任务（用grep匹配行）
-    out, _, _ = run_command(client, f"grep -F 'ntpdate' {tmp_cron} || true")
-    if not out.strip():
-        # 追加任务到临时文件
-        run_command(client, f"echo '{cron_line}' >> {tmp_cron}")
-        # 重新加载 crontab
-        out, err, status = run_command(client, f"crontab {tmp_cron}")
-        if status == 0 or "some known success indicator" in out+err:
-            print_success("已添加每日凌晨3点ntpdate同步任务")
+    # 1) 优先使用 ntpdate
+    out, _, _ = run_command(client, "which ntpdate")
+    if out.strip():
+        out, status = run_command_live(client, f"ntpdate {ntp_server}")
+        if status == 0 or ("adjust time" in out) or ("step time" in out):
+            print_success(f"时间同步成功，使用 ntpdate 服务器 {ntp_server}")
         else:
-            print_warning(f"添加ntpdate定时任务失败，命令输出: {out.strip()} {err.strip()}")
+            print_warning(f"ntpdate 同步失败，输出：{(out).strip()}")
+
+        cron_line = f"0 3 * * * /usr/sbin/ntpdate {ntp_server} >/dev/null 2>&1"
+        tmp_cron = "/tmp/crontab.tmp"
+
+        run_command(client, f"crontab -l > {tmp_cron} || true")
+        out, _, _ = run_command(client, f"grep -F 'ntpdate' {tmp_cron} || true")
+        if not out.strip():
+            run_command(client, f"echo '{cron_line}' >> {tmp_cron}")
+            out, err, status = run_command(client, f"crontab {tmp_cron}")
+            if status == 0:
+                print_success("已添加每日凌晨3点 ntpdate 同步任务")
+            else:
+                print_warning(f"添加 ntpdate 定时任务失败，命令输出: {(out + ' ' + err).strip()}")
+        else:
+            print_info("ntpdate 定时同步任务已存在")
+        return
+
+    # 2) ntpdate 不存在：尝试 yum 是否能找到并安装
+    print_info("ntpdate 未安装，检查 yum 源是否提供 ntpdate ...")
+    out, err, status = run_command(client, "yum -q list ntpdate 2>/dev/null || true")
+    not_found = ("No matching Packages" in (out + err)) or ("Error: No matching Packages" in (out + err)) or (not out.strip())
+
+    if not not_found:
+        print_info("yum 源存在 ntpdate，尝试安装...")
+        out, err, status = run_command(client, "yum install -y ntpdate")
+        if status == 0:
+            print_success("安装 ntpdate 成功，开始同步...")
+            out, err, status = run_command(client, f"ntpdate {ntp_server}")
+            if status == 0 or ("adjust time" in out) or ("step time" in out):
+                print_success(f"时间同步成功，使用 ntpdate 服务器 {ntp_server}")
+            else:
+                print_warning(f"ntpdate 同步失败，输出：{(out + err).strip()}")
+
+            cron_line = f"0 3 * * * /usr/sbin/ntpdate {ntp_server} >/dev/null 2>&1"
+            tmp_cron = "/tmp/crontab.tmp"
+
+            run_command(client, f"crontab -l > {tmp_cron} || true")
+            out, _, _ = run_command(client, f"grep -F 'ntpdate' {tmp_cron} || true")
+            if not out.strip():
+                run_command(client, f"echo '{cron_line}' >> {tmp_cron}")
+                out, err, status = run_command(client, f"crontab {tmp_cron}")
+                if status == 0:
+                    print_success("已添加每日凌晨3点 ntpdate 同步任务")
+                else:
+                    print_warning(f"添加 ntpdate 定时任务失败，命令输出: {(out + ' ' + err).strip()}")
+            else:
+                print_info("ntpdate 定时同步任务已存在")
+            return
+        else:
+            print_warning(f"安装 ntpdate 失败，改用 chrony。输出：{(out + err).strip()}")
     else:
-        print_info("ntpdate定时同步任务已存在")
+        print_info("yum 源未找到 ntpdate，改用 chrony。")
+
+    # 3) fallback: chrony
+    print_info("安装并配置 chrony 时间同步服务...")
+    out, err, status = run_command(client, "yum install -y chrony")
+    if status != 0:
+        print_error(f"安装 chrony 失败，请手动检查。输出：{(out + err).strip()}")
+        return
+
+    # 配置 /etc/chrony.conf：确保有指定 server
+    conf = "/etc/chrony.conf"
+    out, _, _ = run_command(client, f"test -f {conf} && echo OK || echo NO")
+    if out.strip() != "OK":
+        print_warning(f"未找到 {conf}，尝试继续启用 chronyd（可能路径不同）")
+    else:
+        out, _, _ = run_command(client, f"grep -F 'server {ntp_server}' {conf} >/dev/null 2>&1 && echo YES || echo NO")
+        if out.strip() != "YES":
+            run_command(client, f"cp -a {conf} {conf}.bak.$(date +%Y%m%d%H%M%S) >/dev/null 2>&1 || true")
+            run_command(client, f"echo 'server {ntp_server} iburst' >> {conf}")
+            print_success(f"已写入 chrony NTP 服务器：{ntp_server}")
+        else:
+            print_info(f"chrony NTP 服务器已存在：{ntp_server}")
+
+    # 启用并启动 chronyd
+    out, err, status = run_command(client, "systemctl enable --now chronyd")
+    if status != 0:
+        # 兼容部分无 systemd 环境
+        run_command(client, "service chronyd start || service chrony start || true")
+        run_command(client, "chkconfig chronyd on || chkconfig chrony on || true")
+
+    # 立刻校时（允许失败，不影响常驻同步）
+    out, err, status = run_command(client, "chronyc -a makestep || true")
+    if (out + err).strip():
+        print_info(f"chrony 校时输出：{(out + err).strip()}")
+    print_success("chrony 时间同步已配置完成（常驻服务同步，无需 crontab）")
 
 
 def optimize_vimrc(client):
-    print_info("\n优化 Vim 配置文件 ~/.vimrc ...")
+    print_info("优化 Vim 配置文件 ~/.vimrc ...")
 
     # 明确远程绝对路径，假设用 root 用户
     remote_vimrc_path = "/root/.vimrc"
