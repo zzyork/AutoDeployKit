@@ -1,10 +1,10 @@
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.choice import confirm_yes_no, menu_choice
-from colorama import Fore
+from utils.choice import confirm_yes_no
+from utils.menu_runner import run_menu
 
 
-def check_and_disable_firewalld(client):
+def manage_firewalld(client):
     print_info("检查 firewalld 状态 ...")
     output, err, _ = run_command(client, "systemctl is-active firewalld")
     status = output.strip()
@@ -63,7 +63,7 @@ def disable_selinux(client):
         print_success("SELinux 已处于关闭状态")
         return
 
-    if confirm_yes_no("是否禁用 SELinux？", default=False):
+    if not confirm_yes_no("是否禁用 SELinux？", default=False):
         print_warning("保留 SELinux 当前状态")
         return
     print_info("正在设置 SELinux 为 disabled ...")
@@ -76,9 +76,10 @@ def disable_selinux(client):
     else:
         print_error("修改 SELinux 配置失败")
 
+operations = {
+    "1": ("防火墙 (firewalld) 配置", manage_firewalld),
+    "2": ("禁用 SELinux", disable_selinux),
+}
 
-def manage_firewall_selinux(client):
-    print(Fore.BLUE + "\n=== 防火墙与 SELinux 配置 ===")
-
-    check_and_disable_firewalld(client)
-    disable_selinux(client)
+def manage_firewall_selinux(clients):
+    run_menu("防火墙与 SELinux 配置", operations, clients)

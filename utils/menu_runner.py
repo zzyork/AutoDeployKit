@@ -1,11 +1,9 @@
 # utils/menu_runner.py
+import inspect
 from colorama import Fore, Style
 from utils.output import print_info, print_warning, print_error
 
 def run_menu(title: str, operations: dict, clients: list):
-    print(Style.BRIGHT + "-" * 40)
-    print_info(f"开始执行{title}")
-    print(Style.BRIGHT + "-" * 40)
 
     while True:
         print(Style.BRIGHT + Fore.BLUE + f"\n========== {title}菜单 ==========")
@@ -23,6 +21,19 @@ def run_menu(title: str, operations: dict, clients: list):
             continue
 
         _, func = operations[choice]
+        try:
+            params = inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            params = {}
+
+        # If the operation explicitly asks for the full clients list, call once.
+        if len(params) == 1 and "clients" in params:
+            try:
+                func(clients)
+            except Exception as e:
+                print_error(f"执行失败：{e}")
+            continue
+
         for hostname, client in clients:
             print_info(f"当前操作的服务器：[{hostname}]")
             try:

@@ -6,9 +6,6 @@ from server_ops.disk_partition_ops import manage_disk_partition
 from server_ops.system_optimize_ops import manage_system_optimize
 from server_ops.openssl_upgrade import manage_ssl
 from server_ops.openssh_upgrade import manage_openssh
-
-from colorama import Fore, Style
-from utils.output import print_info, print_warning, print_error
 from utils.menu_runner import run_menu
 
 # 注册所有操作：编号 -> (描述, 函数)
