@@ -42,7 +42,7 @@
 ├─ server_ops/              # 服务器初始化相关操作
 │  ├─ main.py               # 菜单入口
 │  ├─ hostname_ops.py       # 主机名管理
-│  ├─ yum_repos_ops.py      # Yum 源
+│  ├─ dnf_repos_ops.py      # Yum 源
 │  ├─ pkg_ops.py            # 软件包
 │  ├─ firewall_selinux_ops.py# 防火墙/SELinux
 │  ├─ kernel_optimize_ops.py# 内核调优

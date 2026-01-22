@@ -15,7 +15,7 @@ def upgrade_openssl_1_1_1(client):
     print_info("升级 OpenSSL 到 1.1.1w")
 
     print_info("安装perl依赖......")
-    _, err, status = run_command(client, 'yum -y install perl')
+    _, err, status = run_command(client, 'dnf -y install perl')
     if err:
         print_error("安装perl失败，报错信息：\n" + err)
         return None
@@ -69,7 +69,7 @@ def upgrade_openssl_v3(client):
         print_info("升级 OpenSSL 到 " + latest_version)
 
         print_info("安装perl依赖")
-        _, status = run_command_live(client, 'yum -y install perl')
+        _, status = run_command_live(client, 'dnf -y install perl')
         print_success("perl安装完成。")
 
         print_info("开始下载源码包并编译安装")
@@ -120,7 +120,7 @@ def fix_libssl_so3(client):
 def install_perl_cpan(client):
     print_info("安装 perl-CPAN 模块以解决 IPC/Cmd.pm 缺失")
     cmds = [
-        "yum install -y perl-CPAN",
+        "dnf install -y perl-CPAN",
         "echo 'yes\nmanual\nyes\ninstall IPC::Cmd\n' | perl -MCPAN -e shell"
     ]
     for cmd in cmds:

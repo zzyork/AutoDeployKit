@@ -32,7 +32,7 @@ def install_nginx(client):
         print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        output, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel')
+        output, status = run_command_live(client, 'dnf -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel')
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")

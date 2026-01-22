@@ -27,7 +27,7 @@ def upgrade_openssh(client):
         print_info("升级 OpenSSH 到 " + latest_version)
 
         print_info("安装telnet及xinetd依赖")
-        run_command_live(client, 'yum -y install xinetd telnet-server')
+        run_command_live(client, 'dnf -y install xinetd telnet-server')
         run_command_live(client, "systemctl enable xinetd --now && systemctl enable telnet.socket --now")
         print_info("\n检查telnet 23端口是否正常启动......")
         output, error, status = run_command(client, 'ss -nltp | grep :23')
@@ -77,7 +77,7 @@ def upgrade_openssh(client):
         print_success("\n!!!请手动telnet连接远程服务器23端口，以避免无法远程服务器!!!")
 
         print_info("\n安装依赖......")
-        run_command_live(client, 'yum -y install gcc gcc-c++ glibc make autoconf pcre-devel pam-devel zlib zlib-devel')
+        run_command_live(client, 'dnf -y install gcc gcc-c++ glibc make autoconf pcre-devel pam-devel zlib zlib-devel')
         print_success("\n依赖安装完成!")
 
         current_openssl_version, error, status = run_command(client, 'openssl version')

@@ -40,7 +40,7 @@ An automation toolkit for operating and deploying across multiple Linux servers 
 ├─ server_ops/              # Server initialization operations
 │  ├─ main.py               # Menu entry
 │  ├─ hostname_ops.py       # Hostname management
-│  ├─ yum_repos_ops.py      # Yum repositories
+│  ├─ dnf_repos_ops.py      # Yum repositories
 │  ├─ pkg_ops.py            # Packages
 │  ├─ firewall_selinux_ops.py# firewalld / SELinux
 │  ├─ kernel_optimize_ops.py# Kernel tuning

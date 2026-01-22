@@ -9,6 +9,7 @@ from utils.menu_runner import run_menu
 operations = {
     "1": ("Docker管理", manage_docker),
     "2": ("Minio管理", manage_minio),
+    "3": ("Supervisor管理", manage_minio),
 }
 
 def run(clients):

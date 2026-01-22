@@ -36,14 +36,14 @@ def configure_ntpdate(client):
             print_info("ntpdate 定时同步任务已存在")
         return
 
-    # 2) ntpdate 不存在：尝试 yum 是否能找到并安装
-    print_info("ntpdate 未安装，检查 yum 源是否提供 ntpdate ...")
-    out, err, status = run_command(client, "yum -q list ntpdate 2>/dev/null || true")
+    # 2) ntpdate 不存在：尝试 dnf 是否能找到并安装
+    print_info("ntpdate 未安装，检查 dnf 源是否提供 ntpdate ...")
+    out, err, status = run_command(client, "dnf -q list ntpdate 2>/dev/null || true")
     not_found = ("No matching Packages" in (out + err)) or ("Error: No matching Packages" in (out + err)) or (not out.strip())
 
     if not not_found:
-        print_info("yum 源存在 ntpdate，尝试安装...")
-        out, err, status = run_command(client, "yum install -y ntpdate")
+        print_info("dnf 源存在 ntpdate，尝试安装...")
+        out, err, status = run_command(client, "dnf install -y ntpdate")
         if status == 0:
             print_success("安装 ntpdate 成功，开始同步...")
             out, err, status = run_command(client, f"ntpdate {ntp_server}")
@@ -70,11 +70,11 @@ def configure_ntpdate(client):
         else:
             print_warning(f"安装 ntpdate 失败，改用 chrony。输出：{(out + err).strip()}")
     else:
-        print_info("yum 源未找到 ntpdate，改用 chrony。")
+        print_info("dnf 源未找到 ntpdate，改用 chrony。")
 
     # 3) fallback: chrony
     print_info("安装并配置 chrony 时间同步服务...")
-    out, err, status = run_command(client, "yum install -y chrony")
+    out, err, status = run_command(client, "dnf install -y chrony")
     if status != 0:
         print_error(f"安装 chrony 失败，请手动检查。输出：{(out + err).strip()}")
         return

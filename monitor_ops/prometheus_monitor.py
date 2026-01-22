@@ -42,7 +42,7 @@ def install_prometheus(client):
         print_info(f"当前Go版本: {go_version_output.strip()}\n")
     else:
         print_info("GO语言环境不存在，开始安装")
-        output, status = run_command_live(client, "yum install -y go")
+        output, status = run_command_live(client, "dnf install -y go")
         if status == 0:
             print_success("GO语言环境安装完成。\n")
             go_version_output,_ , go_version_status = run_command(client, "go version")
