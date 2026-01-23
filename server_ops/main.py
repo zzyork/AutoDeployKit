@@ -1,11 +1,10 @@
-from server_ops.hostname_ops import manage_hostname
-from server_ops.pkg_ops import manage_packages
-from server_ops.firewall_selinux_ops import manage_firewall_selinux
-from server_ops.kernel_optimize_ops import kernel_optimize
-from server_ops.disk_partition_ops import manage_disk_partition
-from server_ops.system_optimize_ops import manage_system_optimize
-from server_ops.openssl_upgrade import manage_ssl
-from server_ops.openssh_upgrade import manage_openssh
+from .hostname_ops import manage_hostname
+from .pkg_ops import manage_packages
+from .firewall_ops import manage_firewall_selinux
+from .kernel_optimize_ops import kernel_optimize
+from .disk_partition_ops import manage_disk_partition
+from .system_optimize_ops import manage_system_optimize
+from .openssl_upgrade import manage_ssl
 from utils.menu_runner import run_menu
 
 # 注册所有操作：编号 -> (描述, 函数)
