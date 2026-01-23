@@ -40,14 +40,14 @@ An automation toolkit for operating and deploying across multiple Linux servers 
 ├─ server_ops/              # Server initialization operations
 │  ├─ main.py               # Menu entry
 │  ├─ hostname_ops.py       # Hostname management
-│  ├─ yum_repos_ops.py      # Yum repositories
+│  ├─ dnf_repos_ops.py      # Yum repositories
 │  ├─ pkg_ops.py            # Packages
 │  ├─ firewall_selinux_ops.py# firewalld / SELinux
 │  ├─ kernel_optimize_ops.py# Kernel tuning
 │  ├─ disk_partition_ops.py # Bare disk + LVM + mount
 │  ├─ system_optimize_ops.py# System optimization
 │  └─ openssl_upgrade.py    # OpenSSL upgrade
-├─ software_ops/            # Software management (Nginx, Docker)
+├─ middleware_ops/            # Middleware management (Nginx, MySQL)
 │  ├─ main.py
 │  ├─ nginx_manager.py
 │  └─ docker_manager.py
@@ -60,9 +60,8 @@ An automation toolkit for operating and deploying across multiple Linux servers 
 ├─ server_check_reports/    # Output directory for inspection reports
 └─ utils/                   # Utilities
    ├─ ssh_utils.py          # SSH connection & commands (with proxy support)
-   ├─ file_utils.py         # Download/upload, template render, GitHub version fetch
+   ├─ file_utils.py         # Download/upload, template render, GitHub version fetch, MD5 utilities
    ├─ output.py             # Colored console and local logfile
-   ├─ hash_utils.py         # MD5 utilities
    └─ server_utils.py       # Server helper utilities
 ```
 
@@ -115,7 +114,7 @@ python cli.py <module_name> <group>
 
 - `<module_name>` options:
   - `server_ops` Server initialization
-  - `software_ops` Software management (Nginx, Docker)
+  - `middleware_ops` Software management (Nginx, Docker)
   - `monitor_ops` Monitoring setup (mysqld_exporter, Prometheus)
   - `server_check` Server inspection (Markdown report)
 - `<group>`: group name from the hosts file, e.g., `webservers`
@@ -127,7 +126,7 @@ Examples:
 python cli.py server_ops webservers
 
 # Software management (Nginx, Docker)
-python cli.py software_ops webservers
+python cli.py middleware_ops webservers
 
 # Monitoring setup (mysqld_exporter, Prometheus)
 python cli.py monitor_ops dbservers
@@ -144,7 +143,7 @@ python cli.py server_check webservers
   - Hostname, Yum repos, packages, firewalld & SELinux, kernel & system tuning
   - Disk partitioning & mounting: detect bare disks, create GPT + LVM, format XFS, mount to `/data`
   - OpenSSL upgrade for security hardening
-- software_ops
+- middleware_ops
   - Nginx: fetch stable version, build from source, template `nginx.conf`, systemd service
   - Docker: install official static binaries, systemd service
 - monitor_ops

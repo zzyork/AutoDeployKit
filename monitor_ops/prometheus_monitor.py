@@ -2,9 +2,10 @@ import os
 
 from colorama import Fore
 
-from utils.file_utils import get_stable_version_from_github, download_file, upload_file, upload_file_with_vars
+from utils.file_utils import get_stable_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
+from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_prometheus(client):
@@ -15,11 +16,9 @@ def install_prometheus(client):
         return None
     else:
         pass
-    url = "https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5"
-    stable_version = get_stable_version_from_github(url)
+    stable_version = get_stable_version("https://api.github.com/repos/prometheus/prometheus/tags?page=1&per_page=5")
     print_info("Prometheus最新发行版为：" + stable_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice != "y":
+    if not confirm_yes_no("是否安装？", default=False):
         print_warning("→ 已跳过安装")
         return None
     default_install_path = "/usr/local/prometheus" + '.'.join(stable_version.split('.')[:2])
@@ -43,7 +42,7 @@ def install_prometheus(client):
         print_info(f"当前Go版本: {go_version_output.strip()}\n")
     else:
         print_info("GO语言环境不存在，开始安装")
-        output, status = run_command_live(client, "yum install -y go")
+        output, status = run_command_live(client, "dnf install -y go")
         if status == 0:
             print_success("GO语言环境安装完成。\n")
             go_version_output,_ , go_version_status = run_command(client, "go version")
@@ -80,33 +79,30 @@ def install_prometheus(client):
 
     cmd_status = 0
     for cmd in cmds:
-        output, cmd_status = run_command_live(client, cmd)
+        _, _, cmd_status = run_command(client, cmd)
         if cmd_status != 0 :
             print_error(f"\n命令执行失败: {cmd}")
             print_warning("中止当前操作，返回上一级菜单\n")
             break
 
     if cmd_status == 0:
-        choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置systemd守护进程？", default=False):
             local_path = os.path.join("config", "prometheus", "prometheus.service")
             remote_path = "/etc/systemd/system/prometheus.service"
             run_command(client, "mkdir -p /data/prometheus")
             upload_file_with_vars(client, local_path, remote_path, {'PROMETHEUS_INSTALL_PATH': install_path, 'PROMETHEUS_DATA_PATH': data_dir})
             run_command(client, "systemctl daemon-reload")
-            print_success("✓ systemd守护进程配置完成")
+            print_success("✓ systemd守护进程配置完成\n")
         else:
-            print_warning("→ 已跳过systemd守护进程配置")
+            print_warning("→ 已跳过systemd守护进程配置\n")
 
-        choice = input(Fore.MAGENTA + f"是否配置开机自启动？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否配置开机自启动？", default=False):
             run_command(client, "systemctl enable prometheus")
             print_success("✓ 开机自启动配置完成")
         else:
             print_warning("→ 已跳过开机自启动配置")
 
-        choice = input(Fore.MAGENTA + f"是否启动Prometheus服务？(y/N): ").strip().lower()
-        if choice == "y":
+        if confirm_yes_no("是否启动Prometheus服务？", default=False):
             run_command(client, "systemctl start prometheus")
             print_success("✓ Prometheus服务启动完成")
         else:

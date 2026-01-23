@@ -126,8 +126,8 @@ def run_command(client, command):
     # 先加载环境变量，再执行命令
     full_command = f"source /etc/profile; {command}"
     stdin, stdout, stderr = client.exec_command(full_command)
-    out = stdout.read().decode()
-    err = stderr.read().decode()
+    out = stdout.read().decode().strip()
+    err = stderr.read().decode().strip()
     status = stdout.channel.recv_exit_status()
     return out, err, status
 

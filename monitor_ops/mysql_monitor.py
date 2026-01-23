@@ -2,37 +2,40 @@ import os
 
 from colorama import Fore
 
-from utils.file_utils import get_stable_version_from_github, download_file, upload_file, upload_file_with_vars
+from utils.file_utils import get_stable_version, download_file, upload_file, upload_file_with_vars
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.server_utils import is_valid_ip
+from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_mysqld_exporter(client):
-    url = "https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5"
-    stable_version = get_stable_version_from_github(url)
-    print_info("mysqld_exporter最新发行版为：" + stable_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
-        print_info("开始安装mysqld_exporter " + stable_version + "......\n")
+    latest_version = get_stable_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
+    print_info("mysqld_exporter最新发行版为：" + latest_version)
+    if confirm_yes_no("是否安装？", default=False):
+        print_info("开始安装mysqld_exporter " + latest_version + "......")
 
-        print_info("开始下载")
-        local_path = os.path.join("packages", "mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz")
-        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + stable_version + "/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
-        remote_path = "/usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
-        print(url)
-        print(remote_path)
+        local_path = os.path.join("packages", "mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz")
+        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + latest_version + "/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
+        remote_path = "/usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
 
-        try:
-            download_file(url, local_path)
-        except RuntimeError as e:
-            print_error(f"下载失败，中止安装: {e}")
-            print_warning("返回上一级菜单\n")
-            return None
-        upload_file(client, local_path, remote_path)
+        wget_cmd = f"cd /usr/local/src && wget {url}"
+        _, wget_status = run_command_live(client, wget_cmd)
+        
+        if wget_status != 0:
+            print_warning("下载失败，尝试本地上传")
+            try:
+                download_file(url, local_path)
+                upload_file(client, local_path, remote_path)
+                print_success("本地上传成功")
+            except RuntimeError as e:
+                print_error(f"本地上传失败，中止安装: {e}")
+                print_warning("返回上一级菜单\n")
+                return None
+                
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "mv /usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64 /usr/local/mysqld-exporter"
+            "mv /usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64 /usr/local/mysqld-exporter"
         ]
 
         cmd_status = 0
@@ -88,8 +91,7 @@ def install_mysqld_exporter(client):
                     print_error(f"错误信息: {err.strip()}")
 
             # 询问是否更新Prometheus配置
-            choice = input(Fore.MAGENTA + f"\n是否自动更新Prometheus配置以添加MySQL监控？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("\n是否自动更新Prometheus配置以添加MySQL监控？", default=False):
                 update_prometheus_config(client, db_host)
 
             print_info("\n安装完成！")

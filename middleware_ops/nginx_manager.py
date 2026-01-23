@@ -1,39 +1,15 @@
 import os
-import re
 import json
 import datetime
-
-import requests
 from colorama import Fore
-
-from utils.file_utils import download_file, upload_file, upload_file_with_vars
+from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
-
-
-def get_stable_nginx():
-    url = "https://nginx.org/en/download.html"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"请求失败：{e}")
-        return None
-
-    # 正则匹配 “Stable version” 段落的版本号
-    match = re.search(r'Stable version.*?nginx-(\d+\.\d+\.\d+)', response.text, re.DOTALL)
-
-    if not match:
-        print("未找到 Stable version 信息")
-        return None
-
-    return match.group(1)
+from utils.choice import confirm_yes_no, menu_choice
 
 def install_nginx(client):
-    stable_version = get_stable_nginx()
     print_info("Nginx最新发行版为：" + stable_version)
-    choice = input(Fore.MAGENTA + f"是否安装？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否确定安装？", default=False):
         # 提示输入Nginx安装目录
         default_install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入Nginx安装目录 (默认: {default_install_path}): ").strip()
@@ -56,7 +32,7 @@ def install_nginx(client):
         print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        output, status = run_command_live(client, 'yum -y install make zlib zlib-devel gcc-c++ libtool openssl-devel pcre-devel')
+        output, status = run_command_live(client, 'dnf -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel')
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
@@ -91,20 +67,20 @@ def install_nginx(client):
         for cmd in cmds:
             output, cmd_status = run_command_live(client, cmd)
             if cmd_status != 0 :
-                print_error(f"\n命令执行失败: {cmd}")
+                print_error(f"命令执行失败: {cmd}")
                 print_warning("中止当前操作，返回上一级菜单\n")
                 break
 
         if cmd_status == 0:
-            current_version, _ = run_command_live(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
-            print_info("\n安装完成！\n当前nginx版本：" + current_version)
-            choice = input(Fore.MAGENTA + f"是否自动调整nginx.conf文件？(y/N): ").strip().lower()
-            if choice == "y":
+            current_version,_, _ = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
+            current_version = current_version.strip() if current_version else ""
+            print_info("安装完成！当前nginx版本：" + current_version)
+            if confirm_yes_no("是否自动调整nginx.conf文件？", default=False):
                 local_path = os.path.join("config", "nginx", "nginx.conf")
                 remote_path = install_path + "/conf/nginx.conf"
                 upload_file_with_vars(client, local_path, remote_path, {'NGINX_INSTALL_PATH': install_path, 'NGINX_LOG_DIR': log_dir})
-            choice = input(Fore.MAGENTA + f"是否配置systemd守护进程？(y/N): ").strip().lower()
-            if choice == "y":
+                print_success("✓ nginx.conf配置完成\n")
+            if confirm_yes_no("\n是否配置systemd守护进程？", default=False):
                 local_path = os.path.join("config", "nginx", "nginx.service")
                 remote_path = "/etc/systemd/system/nginx.service"
                 upload_file_with_vars(client, local_path, remote_path, {'install_path': install_path})
@@ -116,12 +92,12 @@ def install_nginx(client):
                     "systemctl enable --now nginx",
                 ]
                 for cmd in systemd_cmds:
-                    output, cmd_status = run_command_live(client, cmd)
+                    _, cmd_status = run_command_live(client, cmd)
                     if cmd_status != 0:
-                        print_error(f"systemd命令执行失败: {cmd}")
+                        print_error(f"命令执行失败: {cmd}")
                         break
                 else:
-                    print_info("systemd守护进程配置完成")
+                    print_success("✓ systemd守护进程配置完成\n")
 
     else:
         print_warning(f"返回上一级")
@@ -129,7 +105,6 @@ def install_nginx(client):
     return None
 
 def upgrade_nginx(client):
-    stable_version = get_stable_nginx()
     print_info("开始升级 Nginx 到最新发行版 " + stable_version + "......\n")
 
     # 先备份当前版本
@@ -137,8 +112,7 @@ def upgrade_nginx(client):
     backup_info = backup_nginx(client)
     if backup_info is None:
         print_warning("备份失败，是否继续升级？")
-        choice = input(Fore.MAGENTA + "继续升级？(y/N): ").strip().lower()
-        if choice != "y":
+        if not confirm_yes_no("继续升级？", default=False):
             print_warning("取消升级操作")
             return None
     else:
@@ -179,8 +153,7 @@ def upgrade_nginx(client):
         if cmd_status != 0 :
             print_error(f"\n命令执行失败: {cmd}")
             print_warning("升级失败，是否回滚到之前版本？")
-            choice = input(Fore.MAGENTA + "是否回滚？(y/N): ").strip().lower()
-            if choice == "y" and backup_info:
+            if confirm_yes_no("是否回滚？", default=False) and backup_info:
                 rollback_nginx(client)
             else:
                 print_warning("中止当前操作，返回上一级菜单\n")
@@ -188,12 +161,12 @@ def upgrade_nginx(client):
 
     if cmd_status == 0:
         current_version, _, status = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
+        current_version = current_version.strip() if current_version else ""
         print_success(f"\n升级已完成！\n当前nginx版本: {current_version}")
         print_info("建议在非业务高峰期手动重启nginx")
         
         # 询问是否立即重启
-        restart_choice = input(Fore.MAGENTA + "是否立即重启nginx？(y/N): ").strip().lower()
-        if restart_choice == "y":
+        if confirm_yes_no("是否立即重启nginx？", default=False):
             print_info("重启nginx服务...")
             output, status = run_command_live(client, 'systemctl restart nginx')
             if status == 0:
@@ -212,7 +185,7 @@ def backup_nginx(client):
         print_error("无法获取当前nginx版本信息")
         return None
     
-    current_version = output.strip()
+    current_version = output.strip() if output else ""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = f"/data/backups/nginx_backup_{current_version}_{timestamp}"
     
@@ -321,8 +294,8 @@ def rollback_nginx(client):
         else:
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
     
-    choice = input(Fore.MAGENTA + "请选择要回滚到的备份编号 (0取消): ").strip()
-    if choice == "0" or not choice.isdigit() or int(choice) < 1 or int(choice) > len(backup_dirs):
+    choice = menu_choice("请选择要回滚到的备份编号 (0取消): ", valid_choices=[str(i) for i in range(len(backup_dirs) + 1)], default="0")
+    if choice == "0":
         print_warning("取消回滚操作")
         return
     
@@ -345,8 +318,7 @@ def rollback_nginx(client):
     # 确认回滚
     print_warning(f"即将回滚nginx到版本 {backup_info['version']}")
     print_warning("这将覆盖当前的nginx安装")
-    confirm = input(Fore.MAGENTA + "确认回滚？(y/N): ").strip().lower()
-    if confirm != "y":
+    if not confirm_yes_no(f"即将回滚nginx到版本 {backup_info['version']}\n这将覆盖当前的nginx安装\n确认回滚？", default=False):
         print_warning("取消回滚操作")
         return
     
@@ -406,8 +378,7 @@ def rollback_nginx(client):
         print_error("回滚后nginx无法正常启动")
     
     # 询问是否启动nginx
-    start_choice = input(Fore.MAGENTA + "是否启动nginx服务？(y/N): ").strip().lower()
-    if start_choice == "y":
+    if confirm_yes_no("是否启动nginx服务？", default=False):
         print_info("启动nginx服务...")
         output, status = run_command_live(client, 'systemctl start nginx')
         if status == 0:
@@ -443,13 +414,17 @@ def list_nginx_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_nginx(client):
-    current_version, error, status = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
+    global current_version, status, stable_version
+    current_version, _, status = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")
+    current_version = current_version.strip() if current_version else ""
+    stable_version = get_stable_version("https://nginx.org/en/download.html", "1.")
+    print_info("Nginx最新稳定版为：" + stable_version)
     while True:
         print("=== Nginx软件管理 ===")
-        if status != 0 or not current_version or current_version.strip() == "":
-            print("1. 安装 Nginx 最新发行版")
+        if status != 0 or not current_version or current_version == "":
+            print("1. 安装 Nginx 最新稳定版")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
             if choice == "1":
                 install_nginx(client)
             elif choice == "0":
@@ -457,15 +432,14 @@ def manage_nginx(client):
             else:
                 print("无效选项，请重新输入")
         else:
-            print_success("当前Nginx版本：" + current_version.strip())
-            stable_version = get_stable_nginx()
-            print_info("Nginx最新发行版为：" + stable_version)
-            print("1. 升级 Nginx 到最新发行版")
+            print_success("当前Nginx版本：" + current_version)
+            print_info("Nginx最新稳定版为：" + stable_version)
+            print("1. 升级 Nginx 到最新稳定版")
             print("2. 备份当前 Nginx 版本")
             print("3. 回滚 Nginx 到之前版本")
             print("4. 查看所有备份")
             print("0. 返回/跳过")
-            choice = input("请选择操作编号: ").strip()
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
             if choice == "1":
                 upgrade_nginx(client)
             elif choice == "2":
@@ -478,6 +452,3 @@ def manage_nginx(client):
                 break
             else:
                 print("无效选项，请重新输入")
-        
-        # 重新获取版本状态
-        current_version, error, status = run_command(client, "nginx -v 2>&1 | awk -F'/' '{print $2}' | awk '{print $1}'")

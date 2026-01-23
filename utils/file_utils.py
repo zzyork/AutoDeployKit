@@ -4,10 +4,21 @@ import sys
 import tempfile
 import time
 from string import Template
+import hashlib
+import difflib
 
 import requests
 from utils.output import print_error, print_info
+from utils.ssh_utils import run_command
 
+def get_local_md5(filepath):
+    """计算本地文件的 MD5 哈希值"""
+    with open(filepath, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+def get_remote_md5(client, remote_path):
+    output, _, _ = run_command(client, f"md5sum {remote_path} | awk '{{print $1}}'")
+    return output.strip()
 
 def download_file(url, dest):
     if os.path.exists(dest):
@@ -190,7 +201,7 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
     rendered = template.safe_substitute(variables)
 
     # 3. 写入到临时文件
-    with tempfile.NamedTemporaryFile('w+', delete=False) as tmpfile:
+    with tempfile.NamedTemporaryFile('w+', delete=False, encoding='utf-8') as tmpfile:
         tmpfile.write(rendered)
         tmpfile_path = tmpfile.name
 
@@ -277,25 +288,153 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
         except Exception:
             pass
 
-def get_stable_version_from_github(url, prefix=None):
-    tags = []
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise RuntimeError(f"GitHub API 请求失败: {response.status_code}")
-    data = response.json()
-    for tag in data:
-        name = tag["name"].split("-")[-1]
-        if prefix:
-            if name.startswith(prefix):
-                ver_math = re.match(r"^(\d+\.\d+\.\d+)$", name)
-                if ver_math:
-                    tags.append(name)
-        else:
-            tags.append(name)
+def compare_file_content(client, filepath, remote_path):
+    """比较本地文件和远程文件的内容差异，返回远程文件相对于本地文件多出来或缺少的内容"""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            local_content = f.read()
+        
+        output, _, _ = run_command(client, f"cat {remote_path}")
+        remote_content = output
+        
+        local_lines = [line for line in local_content.splitlines() if line.strip()]
+        remote_lines = [line for line in remote_content.splitlines() if line.strip()]
+        
+        diff = list(difflib.unified_diff(
+            local_lines, 
+            remote_lines, 
+            fromfile=f"local:{filepath}",
+            tofile=f"remote:{remote_path}",
+            lineterm=''
+        ))
+        
+        if not diff:
+            return "文件内容完全相同"
+        
+        result_lines = []
+        for line in diff:
+            if line.startswith('+++') or line.startswith('---') or line.startswith('@@'):
+                continue
+            elif line.startswith('+'):
+                result_lines.append(f"远程文件多出: {line[1:]}")
+            elif line.startswith('-'):
+                result_lines.append(f"远程文件缺少: {line[1:]}")
+            elif line.startswith(' '):
+                continue
+        
+        if not result_lines:
+            return "文件内容完全相同"
+        
+        return '\n'.join(result_lines)
+        
+    except FileNotFoundError:
+        return f"本地文件不存在: {filepath}"
+    except Exception as e:
+        return f"比较文件内容时出错: {str(e)}"
 
-    if not tags:
+def get_stable_version(url: str, prefix: str = "") -> str:
+    content = ""
+    
+    if "api.github.com" in url:
+        headers = {"User-Agent": "version-checker"}
+        headers["Accept"] = "application/vnd.github+json"
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        
+        resp = requests.get(url, headers=headers, timeout=15)
+        
+        if resp.status_code == 403:
+            remaining = resp.headers.get("X-RateLimit-Remaining")
+            reset = resp.headers.get("X-RateLimit-Reset")
+            if remaining == "0" and reset:
+                reset_ts = int(reset)
+                wait_s = max(0, reset_ts - int(time.time()))
+                raise RuntimeError(
+                    f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
+                )
+            raise RuntimeError(f"GitHub API 403: {resp.text}")
+        
+        if resp.status_code != 200:
+            raise RuntimeError(f"GitHub API 请求失败: {resp.status_code}, {resp.text}")
+        
+        data = resp.json()
+        content = " ".join([tag.get("name", "") for tag in data])
+    
+    else:
+        sess = requests.Session()
+        
+        try:
+            r = sess.get(url, timeout=(2, 5))
+            r.raise_for_status()
+            content = r.text
+        except Exception:
+            r = sess.get(url, timeout=(2, 10))
+            r.raise_for_status()
+            content = r.text
+    
+    if "nginx.org/en/download.html" in url:
+        # Nginx download page has a dedicated "Stable version" row.
+        m = re.search(r"Stable version.*?nginx-([0-9.]+)\.tar\.gz", content, re.IGNORECASE | re.DOTALL)
+        if m:
+            stable_version = m.group(1)
+            if not prefix or stable_version.startswith(prefix):
+                return stable_version
+
+    versions = []
+    
+    version_patterns = [
+        r"(\d+\.\d+\.\d+)",  # x.y.z
+        r"(\d+\.\d+)",       # x.y
+        r"((?:\d+\.)+\d+p\d+)",  # x.y.zpN (OpenSSH 格式)
+        r"v(\d+\.\d+\.\d+)", # vx.y.z
+        r"(\d+_\d+_\d+[a-z])",  # x_y_z + a-z suffix
+        r"(\d+_\d+_\d+)",    # x_y.z
+        r"v(\d+_\d+_\d+[a-z])", # vx_y_z + a-z suffix
+        r"v(\d+_\d+_\d+)",   # vx_y_z
+    ]
+    
+    for pattern in version_patterns:
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        for match in matches:
+            if isinstance(match, tuple):
+                match = match[0] if match[0] else match[1]
+            
+            version_str = match.strip().lstrip('v')
+            
+            if version_str.startswith(prefix):
+                versions.append(version_str)
+    
+    versions = list(set(versions))
+    
+    if not versions:
         raise ValueError(f"未找到前缀为 {prefix} 的版本")
-
-    # 使用 packaging.version 排序，返回最大值
-    latest = max(tags)
-    return latest.lstrip('v')
+    
+    def version_key(v: str):
+        # Handle OpenSSH format: x.y.zpN
+        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
+        if m:
+            return tuple(int(x or 0) for x in m.groups())
+        
+        # Handle underscore format with letter suffix: x_y_z[a-w]
+        m = re.match(r"^(\d+)_(\d+)_(\d+)([a-z])$", v)
+        if m:
+            nums = tuple(int(x) for x in m.groups()[:3])
+            suffix = ord(m.group(4)) - ord('a')  # Convert letter to number (a=0, b=1, etc.)
+            return nums + (suffix,)
+        
+        # Handle underscore format without suffix: x_y_z
+        m = re.match(r"^(\d+)_(\d+)_(\d+)$", v)
+        if m:
+            return tuple(int(x) for x in m.groups())
+        
+        # Handle standard dot format: x.y.z or x.y
+        try:
+            parts = v.split('_') if '_' in v else v.split('.')
+            return tuple(map(int, parts))
+        except ValueError:
+            return (-1, -1, -1, -1)
+    
+    latest_version = max(versions, key=version_key)
+    # Convert underscores to dots for output format
+    return latest_version.replace('_', '.')

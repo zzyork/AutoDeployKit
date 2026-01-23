@@ -42,14 +42,14 @@
 ├─ server_ops/              # 服务器初始化相关操作
 │  ├─ main.py               # 菜单入口
 │  ├─ hostname_ops.py       # 主机名管理
-│  ├─ yum_repos_ops.py      # Yum 源
+│  ├─ dnf_repos_ops.py      # Yum 源
 │  ├─ pkg_ops.py            # 软件包
 │  ├─ firewall_selinux_ops.py# 防火墙/SELinux
 │  ├─ kernel_optimize_ops.py# 内核调优
 │  ├─ disk_partition_ops.py # 裸盘分区+LVM+挂载
 │  ├─ system_optimize_ops.py# 系统优化
 │  └─ openssl_upgrade.py    # OpenSSL 升级
-├─ software_ops/            # 软件管理（Nginx、Docker）
+├─ middleware_ops/            # 软件管理（Nginx、Docker）
 │  ├─ main.py
 │  ├─ nginx_manager.py
 │  └─ docker_manager.py
@@ -62,9 +62,8 @@
 ├─ server_check_reports/    # 巡检报告输出目录（运行时生成）
 └─ utils/                   # 工具库
    ├─ ssh_utils.py          # SSH 连接、命令执行（支持代理）
-   ├─ file_utils.py         # 下载/上传文件、模板渲染、GitHub 版本获取
+   ├─ file_utils.py         # 下载/上传文件、模板渲染、GitHub 版本获取, MD5 工具
    ├─ output.py             # 彩色日志打印与本地日志落盘
-   ├─ hash_utils.py         # MD5 工具
    └─ server_utils.py       # 服务器工具函数
 ```
 
@@ -117,7 +116,7 @@ python cli.py <module_name> <group>
 
 - `<module_name>` 可选：
   - `server_ops` 服务器初始化
-  - `software_ops` 软件管理（Nginx、Docker）
+  - `middleware_ops` 软件管理（Nginx、Docker）
   - `monitor_ops` 监控部署（mysqld_exporter、Prometheus）
   - `server_check` 服务器巡检（生成 Markdown 报告）
 - `<group>`：主机清单中的组名，例如 `webservers`
@@ -129,7 +128,7 @@ python cli.py <module_name> <group>
 python cli.py server_ops webservers
 
 # 软件管理（Nginx、Docker）
-python cli.py software_ops webservers
+python cli.py middleware_ops webservers
 
 # 监控安装（mysqld_exporter、Prometheus）
 python cli.py monitor_ops dbservers
@@ -146,7 +145,7 @@ python cli.py server_check webservers
   - 主机名、Yum 源、包管理、防火墙与 SELinux、内核与系统优化
   - 磁盘分区与挂载：列出未分区裸盘，创建 GPT + LVM，格式化为 XFS 并挂载到 `/data`
   - OpenSSL 升级：执行安全加固/升级
-- software_ops
+- middleware_ops
   - Nginx：从官网获取稳定版，源码编译安装，支持 `nginx.conf` 模板与 systemd 守护
   - Docker：从官方 static 发行版安装二进制，支持 systemd 守护
 - monitor_ops

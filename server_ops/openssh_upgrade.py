@@ -2,64 +2,23 @@
 import os
 import datetime
 import json
-from traceback import print_tb
 
 from colorama import Fore
 
-from utils import output
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file
-import requests
+from utils.file_utils import download_file, upload_file, get_stable_version
+from utils.choice import confirm_yes_no, menu_choice
 import re
-from packaging import version
-
-def get_latest_openssh(prefix: str):
-    url = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/"
-    sess = requests.Session()
-
-    # 版本解析 key：major.minor[.micro]pN
-    def key(v: str):
-        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
-        return tuple(int(x or 0) for x in m.groups()) if m else (-1, -1, -1, -1)
-
-    # 抓版本列表（只靠 HTML 正则）
-    def extract(html: str):
-        vers = re.findall(r"openssh-((?:\d+\.)+\d+p\d+)\.tar\.gz", html)
-        vers = [v for v in vers if v.startswith(prefix)]
-        return vers
-
-    # 1) 先 Range 请求（大幅减少下载量）
-    try:
-        r = sess.get(url, headers={"Range": "bytes=0-65535"}, timeout=(2, 5))
-        # 有些服务器不支持 Range，会返回 200 全量；也没关系
-        r.raise_for_status()
-        vers = extract(r.text)
-        if vers:
-            return max(vers, key=key)
-    except Exception:
-        pass
-
-    # 2) 兜底：全量请求（保证找到）
-    r = sess.get(url, timeout=(2, 10))
-    r.raise_for_status()
-    vers = extract(r.text)
-    if not vers:
-        raise ValueError(f"未找到前缀为 {prefix} 的版本")
-    return max(vers, key=key)
 
 def upgrade_openssh(client):
-    latest_version = get_latest_openssh(prefix="9.")
-    print_info("OpenSSH 最新发行版为：" + latest_version)
-    choice = input(Fore.MAGENTA + f"是否升级？(y/N): ").strip().lower()
-    if choice == "y":
+    if confirm_yes_no("是否升级？", default=False):
         # 先备份当前版本
         print_info("升级前备份当前OpenSSH版本...")
         backup_info = backup_openssh(client)
         if backup_info is None:
             print_warning("！！！备份失败，是否继续升级？")
-            choice = input(Fore.MAGENTA + "继续升级？(y/N): ").strip().lower()
-            if choice != "y":
+            if not confirm_yes_no("继续升级？", default=False):
                 print_warning("取消升级操作")
                 return None
         else:
@@ -68,7 +27,7 @@ def upgrade_openssh(client):
         print_info("升级 OpenSSH 到 " + latest_version)
 
         print_info("安装telnet及xinetd依赖")
-        run_command_live(client, 'yum -y install xinetd telnet-server')
+        run_command_live(client, 'dnf -y install xinetd telnet-server')
         run_command_live(client, "systemctl enable xinetd --now && systemctl enable telnet.socket --now")
         print_info("\n检查telnet 23端口是否正常启动......")
         output, error, status = run_command(client, 'ss -nltp | grep :23')
@@ -118,20 +77,17 @@ def upgrade_openssh(client):
         print_success("\n!!!请手动telnet连接远程服务器23端口，以避免无法远程服务器!!!")
 
         print_info("\n安装依赖......")
-        run_command_live(client, 'yum -y install gcc gcc-c++ glibc make autoconf pcre-devel pam-devel zlib zlib-devel')
+        run_command_live(client, 'dnf -y install gcc gcc-c++ glibc make autoconf pcre-devel pam-devel zlib zlib-devel')
         print_success("\n依赖安装完成!")
 
         current_openssl_version, error, status = run_command(client, 'openssl version')
         print_info("\n当前OpenSSL版本为：" + current_openssl_version)
-        choice = input(Fore.MAGENTA + f"\n是否已升级OpenSSL？(y/N): ").strip().lower()
-        openssl_upgraded = 0
-        if choice == "y":
+        if confirm_yes_no("\n是否已升级OpenSSL？", default=False):
             openssl_upgraded = 1
             openssl_path, error, status = run_command(client, 'ls -d /usr/local/*ssl*')
             openssl_path = openssl_path.strip()
         else:
-            choice = input(Fore.MAGENTA + f"是否升级OpenSSL？(y/N): ").strip().lower()
-            if choice == "y":
+            if confirm_yes_no("是否升级OpenSSL？", default=False):
                 print_info("调用OpenSSL升级工具...")
                 from server_ops.openssl_upgrade import upgrade_openssl_v3, upgrade_openssl_1_1_1
                 if current_openssl_version.startswith("OpenSSL 1.1.1"):
@@ -261,12 +217,12 @@ def upgrade_openssh(client):
                 break
 
         current_version, _, _ = run_command(client, 'ssh -V 2>&1')
+        current_version = current_version.strip() if current_version else ""
         print_success(f"\n升级已完成！\n当前OpenSSH版本: {current_version}")
         print_info("建议在非业务高峰期手动重启sshd服务")
         
         # 询问是否立即重启
-        restart_choice = input(Fore.MAGENTA + "是否立即重启sshd服务？(y/N): ").strip().lower()
-        if restart_choice == "y":
+        if confirm_yes_no("是否立即重启sshd服务？", default=False):
             print_info("重启sshd服务...")
             output, status = run_command_live(client, '/etc/init.d/sshd restart')
             if status == 0:
@@ -294,7 +250,7 @@ def backup_openssh(client):
         print_error("无法解析OpenSSH版本号")
         return None
     
-    current_version = version_match.group(1)
+    current_version = version_match.group(1).strip() if version_match.group(1) else ""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = f"/data/backups/openssh_backup_{current_version}_{timestamp}"
     
@@ -522,8 +478,7 @@ def rollback_openssh(client):
     # 确认回滚
     print_warning(f"即将回滚OpenSSH到版本 {backup_info['version']}")
     print_warning("这将覆盖当前的OpenSSH安装")
-    confirm = input(Fore.MAGENTA + "确认回滚？(y/N): ").strip().lower()
-    if confirm != "y":
+    if not confirm_yes_no(f"即将回滚OpenSSH到版本 {backup_info['version']}\n这将覆盖当前的OpenSSH安装\n确认回滚？", default=False):
         print_warning("取消回滚操作")
         return
     
@@ -593,8 +548,7 @@ def rollback_openssh(client):
         print_error("回滚后OpenSSH无法正常启动")
     
     # 询问是否启动SSH
-    start_choice = input(Fore.MAGENTA + "是否启动SSH服务？(y/N): ").strip().lower()
-    if start_choice == "y":
+    if confirm_yes_no("是否启动SSH服务？", default=False):
         print_info("启动SSH服务...")
         output, status = run_command_live(client, 'systemctl start sshd')
         if status == 0:
@@ -629,10 +583,12 @@ def list_openssh_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_openssh(client):
-    current_version, _, status = run_command(client, 'ssh -V 2>&1')
-    print_success("当前OpenSSH版本：" + current_version.strip())
+    global current_version, latest_version
+    current_version, _, _ = run_command(client, 'ssh -V 2>&1')
+    current_version = current_version.strip() if current_version else ""
+    print_success("当前OpenSSH版本：" + current_version)
     try:
-        latest_version = get_latest_openssh(prefix="9.")
+        latest_version = get_stable_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
         print_info("OpenSSH最新发行版为：" + latest_version)
     except:
         print_warning("无法获取最新版本信息")
@@ -645,7 +601,7 @@ def manage_openssh(client):
         print("3. 回滚 OpenSSH 到之前版本")
         print("4. 查看所有备份")
         print("0. 返回/跳过")
-        choice = input("请选择操作编号: ").strip()
+        choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
         if choice == "1":
             upgrade_openssh(client)
         elif choice == "2":
@@ -661,3 +617,4 @@ def manage_openssh(client):
         
         # 重新获取版本状态
         current_version, _, status = run_command(client, 'ssh -V 2>&1')
+        current_version = current_version.strip() if current_version else ""

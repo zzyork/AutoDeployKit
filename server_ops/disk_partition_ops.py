@@ -1,10 +1,12 @@
+from importlib import import_module
+from utils import output
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
+from utils.choice import confirm_yes_no, menu_choice
 from colorama import Fore
 
 VG_NAME = "vg_data"
 LV_NAME = "lv_data"
-MOUNT_POINT = "/data"
 
 def list_unmounted_disks(client):
     print_info("正在查找未分区且未挂载的裸磁盘 ...")
@@ -36,7 +38,7 @@ def list_unmounted_disks(client):
 
 
 def create_lvm_and_mount(client, disk):
-    print_info(f"开始在 {disk} 上创建 LVM 并挂载到 {MOUNT_POINT}")
+    print_info(f"开始在 {disk} 上创建 LVM")
 
     cmds = [
         f"parted -s {disk} mklabel gpt",
@@ -46,9 +48,23 @@ def create_lvm_and_mount(client, disk):
         f"vgcreate {VG_NAME} {disk}1",
         f"lvcreate -n {LV_NAME} -l 100%FREE {VG_NAME}",
         f"mkfs.xfs /dev/{VG_NAME}/{LV_NAME}",
-        f"mkdir -p {MOUNT_POINT}",
-        f"mount /dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT}",
-        f"echo \"/dev/{VG_NAME}/{LV_NAME} {MOUNT_POINT} xfs defaults 0 0\" >> /etc/fstab"
+    ]
+
+    for cmd in cmds:
+        _, status = run_command_live(client, cmd)
+        if status != 0:
+            print_error(f"执行失败: {cmd}")
+            return
+    
+    if not confirm_yes_no("新磁盘已分区并创建 LVM，是否挂载？", default=False):
+        return
+    
+    mount_point = input("请输入挂载点(/data): ").strip()
+    
+    cmds = [
+        f"mkdir -p {mount_point}",
+        f"mount /dev/{VG_NAME}/{LV_NAME} {mount_point}",
+        f"echo \"/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0\" >> /etc/fstab"
     ]
 
     for cmd in cmds:
@@ -57,7 +73,15 @@ def create_lvm_and_mount(client, disk):
             print_error(f"执行失败: {cmd}")
             return
 
-    print_success(f"{disk} 已完成 LVM 创建并挂载到 {MOUNT_POINT}")
+    if not confirm_yes_no("是否开机自动挂载？", default=False):
+        return
+    
+    output, status = run_command_live(client, f'echo "/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0" >> /etc/fstab')
+    if status != 0:
+        print_error(f"执行失败: {cmd}")
+        return
+
+    print_success(f"{disk} 已完成 LVM 创建并挂载到 {mount_point}")
 
 def manage_disk_partition(client):
     print(Fore.BLUE + "\n=== 磁盘分区与挂载配置 ===")
@@ -77,8 +101,7 @@ def manage_disk_partition(client):
         return
 
     disk = unmounted_disks[int(choice) - 1]
-    confirm = input(Fore.RED + f"⚠️ 确定要对 {disk} 分区并清空其数据？(y/N): ").strip().lower()
-    if confirm == "y":
+    if confirm_yes_no(f"⚠️ 确定要对 {disk} 分区并清空其数据？", default=False):
         create_lvm_and_mount(client, disk)
     else:
         print_warning("已取消该磁盘处理")

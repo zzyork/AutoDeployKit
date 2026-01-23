@@ -1,6 +1,7 @@
 import importlib
 import sys
 import configparser
+import shlex
 
 from utils.ssh_utils import close_ssh_client, ssh_connect
 
@@ -66,10 +67,10 @@ def load_hosts(pattern, filename="hosts"):
         if line[1]:
             try:
                 param_string = line[1]
-                param_string = param_string.replace('keyfile"', 'keyfile="')
-                param_string = param_string.replace('proxy_keyfile"', 'proxy_keyfile="')
+                # Use shlex.split() to properly handle quotes and spaces
+                param_items = shlex.split(param_string)
                 
-                for item in param_string.split():
+                for item in param_items:
                     if '=' not in item:
                         continue
                     k, v = item.split("=", 1)
@@ -100,15 +101,11 @@ def load_hosts(pattern, filename="hosts"):
 
 def main():
     args = sys.argv[1:]
-    dry_run = False
-    if "--dry-run" in args:
-        dry_run = True
-        args.remove("--dry-run")
 
     if len(args) != 2:
-        print("用法: python cli.py <module_name> <host_pattern> [--dry-run]")
+        print("用法: python cli.py <module_name> <host_pattern>")
         print("示例:")
-        print("  python cli.py server_ops webservers --dry-run")
+        print("  python cli.py server_ops webservers")
         print("  python cli.py server_ops 192.168.1.10")
         print("  python cli.py server_ops 192.168.1.10,192.168.1.11")
         print("  python cli.py server_ops all")
@@ -146,10 +143,10 @@ def main():
         sys.exit(1)
 
     try:
-        try:
-            module.run(clients, dry_run=dry_run)
-        except TypeError:
-            module.run(clients)
+        module.run(clients)
+    except TypeError:
+        print(f"错误：模块 {module_name}.run() 函数参数不匹配")
+        sys.exit(1)
     finally:
         for _, client in clients:
             close_ssh_client(client)

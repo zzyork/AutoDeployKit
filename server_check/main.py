@@ -130,7 +130,7 @@ def service_status(client, filename):
         for service in services:
             out, err, code = run_command(client, f"systemctl status {service}")
             if "could not be found" in (err or "") or "could not be found" in (out or ""):
-                print_info(f"{service}: ❌ 未安装或未找到服务")
+                print_info(f"{service}: 未安装或未找到服务")
                 continue
 
             status, err, code = run_command(client, f"systemctl is-active {service}")
@@ -142,6 +142,7 @@ def service_status(client, filename):
                 f.write(f"- **{service}：** ✅ 运行中\n")
             else:
                 f.write(f"- **{service}：** ☐ 未运行\n")
+        print(f"\n")
 
         f.write("\n---\n\n")
     return None
@@ -153,7 +154,7 @@ def network_info(client, filename):
     )
     network, err, _ = run_command(
         client,
-        "ip -o -4 addr | awk '!/docker|veth|br-|cni|flannel|kube/ && $2!=\"lo\" {print $2, $4}' | uniq"
+        "ip -o -4 addr | awk '!/docker|veth|br-|cni|flannel|tun|kube/ && $2!=\"lo\" {print $2, $4}' | uniq"
     )
 
     if err:
@@ -183,7 +184,7 @@ def network_info(client, filename):
 def log_error(client, filename):
     logs_error, err, _ = run_command(
         client,
-        "grep -E \"error|fail|critical\" /var/log/messages | tail -n 20"
+        "grep -v \"ldapdb_canonuser_plug_init\" /var/log/messages | grep -E \"error|fail|critical\" | tail -n 20"
     )
 
     if err:
@@ -200,12 +201,12 @@ def log_error(client, filename):
 
 def run(clients):
     for ip, client in clients:
-        print_info(f"\n当前操作的服务器：[{ip}]")
+        print_info(f"当前操作的服务器：[{ip}]")
         hostname, err, _ = run_command(client, "hostname")
         timestamp = datetime.datetime.now().strftime("%Y%m")
         group = sys.argv[2] if len(sys.argv) > 2 else None
 
-        dir_name = f"server_check_reports/{group}/{timestamp}"
+        dir_name = f"server_check/reports/{group}/{timestamp}"
         try:
             os.makedirs(dir_name, exist_ok=True)
         except Exception as e:
