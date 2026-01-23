@@ -12,7 +12,7 @@ from utils.menu_runner import run_menu
 operations = {
     "1": ("设置主机名", manage_hostname),
     "2": ("管理软件包", manage_packages),
-    "3": ("配置防火墙和 SELinux", manage_firewall_selinux),
+    "3": ("防火墙(firewalld)配置", manage_firewall_selinux),
     "4": ("内核参数调优", kernel_optimize),
     "5": ("磁盘分区与挂载", manage_disk_partition),
     "6": ("系统优化", manage_system_optimize),

@@ -1,10 +1,9 @@
 import os
-import time
-from utils import output
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import upload_file, get_local_md5, get_remote_md5
-from colorama import Fore
+from utils.choice import confirm_yes_no
+from utils.menu_runner import run_menu
 
 def configure_ntpdate(client):
     print_info("配置时间同步服务...")
@@ -130,7 +129,39 @@ def optimize_vimrc(client):
     upload_file(client, local_vimrc_path, remote_vimrc_path)
     print_success("上传并覆盖了远程 ~/.vimrc 配置文件")
 
-def manage_system_optimize(client):
-    print(Fore.BLUE + "\n=== 系统优化配置 ===")
-    configure_ntpdate(client)
-    optimize_vimrc(client)
+def disable_selinux(client):
+    # 检查 SELinux 当前状态
+    print_info("检查 SELinux 状态 ...")
+    output, err, _ = run_command(client, "getenforce")
+    selinux_status = output.strip().lower()
+
+    if err or selinux_status not in ["enforcing", "permissive", "disabled"]:
+        print_warning("无法确定 SELinux 状态，跳过处理")
+        return
+
+    print_info(f"当前 SELinux 状态：{selinux_status}")
+    if selinux_status == "disabled":
+        print_success("SELinux 已处于关闭状态")
+        return
+
+    if not confirm_yes_no("是否禁用 SELinux？", default=False):
+        print_warning("保留 SELinux 当前状态")
+        return
+    print_info("正在设置 SELinux 为 disabled ...")
+    run_command(client, "setenforce 0")
+
+    cmd = "sed -i 's/^SELINUX=.*/SELINUX=disabled/' /etc/selinux/config"
+    _, status = run_command_live(client, cmd)
+    if status == 0:
+        print_success("SELinux 配置修改成功（需重启生效）")
+    else:
+        print_error("修改 SELinux 配置失败")
+
+operations = {
+    "1": ("配置时钟同步", configure_ntpdate),
+    "2": ("配置 vim", optimize_vimrc),
+    "3": ("禁用 SELinux", disable_selinux),
+}
+
+def manage_system_optimize(clients):
+    run_menu("服务器初始化", operations, clients)
