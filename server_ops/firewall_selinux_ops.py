@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from utils.ssh_utils import run_command, run_command_live
@@ -64,6 +63,30 @@ def list_rules(client):
     print_info("当前防火墙已开放的端口：")
     print(ports.strip() if ports.strip() else "无")
 
+def resolve_services_for_port(client, port):
+    # Query remote firewalld service definitions to map port -> service names.
+    cmd = (
+        f"grep -R --include='*.xml' -n 'port=\"{port}\"' "
+        "/etc/firewalld/services /usr/lib/firewalld/services 2>/dev/null"
+    )
+    output, err, status = run_command(client, cmd)
+    if status != 0 or not output.strip():
+        return []
+    services = []
+    for line in output.splitlines():
+        path = line.split(":", 1)[0]
+        name = Path(path).stem
+        if name:
+            services.append(name)
+    # de-dup preserve order
+    seen = set()
+    dedup = []
+    for s in services:
+        if s not in seen:
+            dedup.append(s)
+            seen.add(s)
+    return dedup
+
 def add_rules(client):
     while True:
         services, _, status = run_command(client, "firewall-cmd --get-services")
@@ -76,33 +99,19 @@ def add_rules(client):
         print_error("输入不能为空，请重新输入")
 
     services_list = services.split()
-    mapping_path = Path(__file__).with_name("firewalld_port_service_map.json")
-    port_service_map = {}
-    if mapping_path.exists():
-        try:
-            port_service_map = json.loads(mapping_path.read_text(encoding="utf-8"))
-        except Exception:
-            print_warning("端口映射文件解析失败，将继续按端口处理")
-
-    if "/" not in rule:
-        port_candidate = rule
-        if port_candidate and all(part.isdigit() for part in port_candidate.split("-")):
-            mapped = port_service_map.get(port_candidate)
-            if isinstance(mapped, list):
-                candidates = [s for s in mapped if s in services_list]
-                if len(candidates) == 1:
-                    rule = candidates[0]
-                elif len(candidates) > 1:
-                    print_info(f"端口 {port_candidate} 对应多个服务：")
-                    for idx, svc in enumerate(candidates, 1):
-                        print(f"{idx}) {svc}")
-                    choice = input("请输入序号选择服务（直接回车跳过映射）： ").strip()
-                    if choice.isdigit():
-                        choice_idx = int(choice)
-                        if 1 <= choice_idx <= len(candidates):
-                            rule = candidates[choice_idx - 1]
-            elif isinstance(mapped, str) and mapped in services_list:
-                rule = mapped
+    if "/" not in rule and rule.isdigit():
+        candidates = [s for s in resolve_services_for_port(client, rule) if s in services_list]
+        if len(candidates) == 1:
+            rule = candidates[0]
+        elif len(candidates) > 1:
+            print_info(f"端口 {rule} 对应多个服务：")
+            for idx, svc in enumerate(candidates, 1):
+                print(f"{idx}) {svc}")
+            choice = input("请输入序号选择服务（直接回车跳过映射）： ").strip()
+            if choice.isdigit():
+                choice_idx = int(choice)
+                if 1 <= choice_idx <= len(candidates):
+                    rule = candidates[choice_idx - 1]
 
     if rule in services_list:
         _ , status = run_command_live(client, f"firewall-cmd --permanent --add-service={rule}")
@@ -166,33 +175,19 @@ def delete_rules(client):
         print_error("输入不能为空，请重新输入")
 
     services_list = services.split()
-    mapping_path = Path(__file__).with_name("firewalld_port_service_map.json")
-    port_service_map = {}
-    if mapping_path.exists():
-        try:
-            port_service_map = json.loads(mapping_path.read_text(encoding="utf-8"))
-        except Exception:
-            print_warning("端口映射文件解析失败，将继续按端口处理")
-
-    if "/" not in rule:
-        port_candidate = rule
-        if port_candidate and all(part.isdigit() for part in port_candidate.split("-")):
-            mapped = port_service_map.get(port_candidate)
-            if isinstance(mapped, list):
-                candidates = [s for s in mapped if s in services_list]
-                if len(candidates) == 1:
-                    rule = candidates[0]
-                elif len(candidates) > 1:
-                    print_info(f"端口 {port_candidate} 对应多个服务：")
-                    for idx, svc in enumerate(candidates, 1):
-                        print(f"{idx}) {svc}")
-                    choice = input("请输入序号选择服务（直接回车跳过映射）： ").strip()
-                    if choice.isdigit():
-                        choice_idx = int(choice)
-                        if 1 <= choice_idx <= len(candidates):
-                            rule = candidates[choice_idx - 1]
-            elif isinstance(mapped, str) and mapped in services_list:
-                rule = mapped
+    if "/" not in rule and rule.isdigit():
+        candidates = [s for s in resolve_services_for_port(client, rule) if s in services_list]
+        if len(candidates) == 1:
+            rule = candidates[0]
+        elif len(candidates) > 1:
+            print_info(f"端口 {rule} 对应多个服务：")
+            for idx, svc in enumerate(candidates, 1):
+                print(f"{idx}) {svc}")
+            choice = input("请输入序号选择服务（直接回车跳过映射）： ").strip()
+            if choice.isdigit():
+                choice_idx = int(choice)
+                if 1 <= choice_idx <= len(candidates):
+                    rule = candidates[choice_idx - 1]
 
     if rule in services_list:
         _ , status = run_command_live(client, f"firewall-cmd --permanent --remove-service={rule}")
