@@ -486,7 +486,7 @@ def manage_mysql(client):
     latest_version = get_stable_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
     print_info("Mysql最新发行版为：" + latest_version)
     while True:
-        print("=== Mysql软件管理 ===")
+        print("========== Mysql软件管理 ==========")
         if status != 0 or not current_version or current_version == "":
             print("1. 安装 Mysql 8.0 最新发行版")
             print("0. 返回/跳过")
