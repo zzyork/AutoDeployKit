@@ -10,19 +10,24 @@
 
 - 服务器初始化
   - 设置主机名
-  - 配置 Yum 源、软件包安装
-  - 防火墙 firewalld 管理、SELinux 管理
-  - 内核参数与系统优化
-  - 裸盘分区、LVM 创建与挂载到指定目录
+  - 管理软件包安装
+  - 防火墙 firewalld 配置、SELinux 管理
+  - 内核参数调优
+  - 磁盘分区与挂载
+  - 系统优化
   - OpenSSL 安全升级
-- 软件管理
+- 中间件管理
   - Nginx 源码安装、升级与 systemd 管理
+  - MySQL 管理
+- 软件管理
   - Docker 二进制安装与 systemd 管理
+  - Minio 管理
+  - Supervisor 管理
 - 监控部署
-  - mysqld_exporter 安装与凭据配置
   - Prometheus 二进制安装与 systemd 管理
+  - mysqld_exporter 安装与凭据配置
 - 服务器巡检
-  - 采集系统信息、资源使用、服务状态、网络与端口、日志错误等
+  - 采集系统基础信息、资源使用、安全配置、服务状态、网络与端口、日志错误等
   - 以 Markdown 报告落盘归档（按主机组与月份归档）
 - SSH 批量执行
   - 支持密码与密钥登录
@@ -49,21 +54,29 @@
 │  ├─ disk_partition_ops.py # 裸盘分区+LVM+挂载
 │  ├─ system_optimize_ops.py# 系统优化
 │  └─ openssl_upgrade.py    # OpenSSL 升级
-├─ middleware_ops/            # 软件管理（Nginx、Docker）
-│  ├─ main.py
-│  ├─ nginx_manager.py
-│  └─ docker_manager.py
-├─ monitor_ops/             # 监控部署（mysqld_exporter、Prometheus）
-│  ├─ main.py
-│  ├─ mysql_monitor.py
-│  └─ prometheus_monitor.py
+├─ middleware_ops/         # 中间件管理（Nginx、MySQL、Redis）
+│  ├─ main.py               # 菜单入口
+│  ├─ nginx_manager.py      # Nginx 源码安装、升级与 systemd 管理
+│  ├─ mysql_manager.py      # MySQL 管理
+│  └─ redis_manager.py      # Redis 管理
+├─ software_ops/            # 软件管理（Docker、Minio、Supervisor）
+│  ├─ main.py               # 菜单入口
+│  ├─ docker_manager.py     # Docker 二进制安装与 systemd 管理
+│  ├─ minio_manager.py      # Minio 管理
+│  └─ supervisor_manager.py # Supervisor 管理
+├─ monitor_ops/             # 监控部署（Prometheus、mysqld_exporter）
+│  ├─ main.py               # 菜单入口
+│  ├─ prometheus_monitor.py # Prometheus 二进制安装与 systemd 管理
+│  └─ mysql_monitor.py      # mysqld_exporter 安装与凭据配置
 ├─ server_check/            # 服务器巡检与报告生成
-│  └─ main.py
+│  └─ main.py               # 系统信息采集与 Markdown 报告生成
 ├─ server_check_reports/    # 巡检报告输出目录（运行时生成）
 └─ utils/                   # 工具库
    ├─ ssh_utils.py          # SSH 连接、命令执行（支持代理）
    ├─ file_utils.py         # 下载/上传文件、模板渲染、GitHub 版本获取, MD5 工具
    ├─ output.py             # 彩色日志打印与本地日志落盘
+   ├─ menu_runner.py        # 菜单运行器
+   ├─ choice.py             # 选择工具
    └─ server_utils.py       # 服务器工具函数
 ```
 
@@ -116,8 +129,9 @@ python cli.py <module_name> <group>
 
 - `<module_name>` 可选：
   - `server_ops` 服务器初始化
-  - `middleware_ops` 软件管理（Nginx、Docker）
-  - `monitor_ops` 监控部署（mysqld_exporter、Prometheus）
+  - `middleware_ops` 中间件管理（Nginx、MySQL、Redis）
+  - `software_ops` 软件管理（Docker、Minio、Supervisor）
+  - `monitor_ops` 监控部署（Prometheus、mysqld_exporter）
   - `server_check` 服务器巡检（生成 Markdown 报告）
 - `<group>`：主机清单中的组名，例如 `webservers`
 
@@ -127,10 +141,13 @@ python cli.py <module_name> <group>
 # 服务器初始化（交互式菜单）
 python cli.py server_ops webservers
 
-# 软件管理（Nginx、Docker）
+# 中间件管理（Nginx、MySQL、Redis）
 python cli.py middleware_ops webservers
 
-# 监控安装（mysqld_exporter、Prometheus）
+# 软件管理（Docker、Minio、Supervisor）
+python cli.py software_ops webservers
+
+# 监控安装（Prometheus、mysqld_exporter）
 python cli.py monitor_ops dbservers
 
 # 服务器巡检（生成报告到 server_check_reports/<group>/<YYYYMM>/）
@@ -147,10 +164,15 @@ python cli.py server_check webservers
   - OpenSSL 升级：执行安全加固/升级
 - middleware_ops
   - Nginx：从官网获取稳定版，源码编译安装，支持 `nginx.conf` 模板与 systemd 守护
+  - MySQL：MySQL 数据库管理
+  - Redis：Redis 内存数据库管理
+- software_ops
   - Docker：从官方 static 发行版安装二进制，支持 systemd 守护
+  - Minio：对象存储服务管理
+  - Supervisor：进程管理工具
 - monitor_ops
-  - mysqld_exporter：从 GitHub 获取最新版，上传并安装，交互式注入数据库连接参数，配置 systemd
   - Prometheus：从 GitHub 获取最新版，上传并安装，创建数据目录并配置 systemd
+  - mysqld_exporter：从 GitHub 获取最新版，上传并安装，交互式注入数据库连接参数，配置 systemd
 - server_check
   - 采集基础信息、资源、服务状态、网络与端口、日志错误，输出 Markdown 报告
 

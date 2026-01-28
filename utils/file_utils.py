@@ -338,6 +338,7 @@ def get_stable_version(url: str, prefix: str = "") -> str:
     if "api.github.com" in url:
         headers = {"User-Agent": "version-checker"}
         headers["Accept"] = "application/vnd.github+json"
+        # .env格式： GITHUB_TOKEN=your_token_here
         token = os.getenv("GITHUB_TOKEN")
         if token:
             headers["Authorization"] = f"Bearer {token}"

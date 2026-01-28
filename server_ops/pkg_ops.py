@@ -239,7 +239,7 @@ def manage_dnf_repos(client):
         print("1. 新增dnf源")
         print("2. 修改dnf源URL")
         print("3. 删除dnf源")
-        print("4. 返回")
+        print("0. 返回")
 
         choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '0'], default="0")
 
@@ -261,9 +261,9 @@ def manage_dnf_repos(client):
                     print_warning("无效的编号")
             except ValueError:
                 print_warning("请输入有效的编号")
-        elif op == "3":
+        elif choice == "3":
             delete_dnf_repo(client)
-        elif op == "4":
+        elif choice == "0":
             break
         else:
             print_warning("无效选项，请重新输入")

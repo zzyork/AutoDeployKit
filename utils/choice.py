@@ -48,11 +48,6 @@ def menu_choice(
     input_func=input,
     print_func=print,
 ):
-    """
-    获取用户菜单选择
-    - valid_choices: 可迭代对象，如 ['1','2','0']
-    - default: 默认值（回车/中断时可返回）
-    """
     choice_set = set(map(str, valid_choices)) if valid_choices is not None else None
     default_str = str(default) if default is not None else None
 
@@ -60,14 +55,12 @@ def menu_choice(
         try:
             user_input = input_func(prompt_message)
         except (KeyboardInterrupt, EOFError):
-            # Ctrl+C / Ctrl+D：返回默认值（有的话），否则返回空串或继续看你习惯
             if default_str is not None:
                 return default_str
             return ""
 
         user_input = user_input.strip()
 
-        # 回车直接走默认值
         if user_input == "" and allow_blank_as_default and default_str is not None:
             return default_str
 
