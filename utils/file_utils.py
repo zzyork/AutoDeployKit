@@ -6,6 +6,7 @@ import time
 from string import Template
 import hashlib
 import difflib
+from datetime import datetime, timezone
 
 import requests
 from utils.output import print_error, print_info
@@ -407,7 +408,6 @@ def get_stable_version(url: str, prefix: str = "") -> str:
                 versions.append(version_str)
     
     versions = list(set(versions))
-    
     if not versions:
         raise ValueError(f"未找到前缀为 {prefix} 的版本")
     
@@ -439,3 +439,73 @@ def get_stable_version(url: str, prefix: str = "") -> str:
     latest_version = max(versions, key=version_key)
     # Convert underscores to dots for output format
     return latest_version.replace('_', '.')
+
+
+def get_eol_date(software: str, version: str) -> str:
+    if not version or not software:
+        return "Unknown"
+
+    url = f"https://endoflife.date/api/{software.strip().lower()}.json"
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch EOL data from endoflife.date: {e}")
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        raise RuntimeError(f"Invalid JSON from endoflife.date: {e}")
+
+    if not isinstance(data, list):
+        raise RuntimeError("Unexpected EOL API response format")
+
+    normalized = version.strip().lower().lstrip("v")
+    candidates = []
+    m = re.match(r"^(\d+\.\d+)", normalized)
+    if m:
+        candidates.append(m.group(1))
+    m = re.match(r"^(\d+)", normalized)
+    if m:
+        candidates.append(m.group(1))
+    candidates.append(normalized)
+
+    best = None
+    best_score = -1
+    best_len = -1
+    for entry in data:
+        cycle = str(entry.get("cycle", "")).strip().lower()
+        if not cycle:
+            continue
+        score = 0
+        if cycle == normalized:
+            score = 3
+        elif normalized.startswith(cycle):
+            score = 2
+        elif cycle in candidates:
+            score = 1
+
+        if score > best_score or (score == best_score and len(cycle) > best_len):
+            best_score = score
+            best_len = len(cycle)
+            best = entry
+
+    if not best or best_score <= 0:
+        return "Unknown"
+
+    eol = best.get("eol")
+    if not eol or eol is False:
+        return "Unknown"
+
+    if isinstance(eol, str):
+        try:
+            dt = datetime.strptime(eol, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return "Unknown"
+
+        now = datetime.now(timezone.utc)
+        if dt <= now:
+            return f"{software} {version} 的官方支持已于 {eol} 结束"
+        return f"{software} {version} 的官方支持将于 {eol} 结束"
+
+    return "Unknown"
