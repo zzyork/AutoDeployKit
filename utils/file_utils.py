@@ -333,47 +333,50 @@ def compare_file_content(client, filepath, remote_path):
     except Exception as e:
         return f"比较文件内容时出错: {str(e)}"
 
-def get_stable_version(url: str, prefix: str = "") -> str:
+def get_stable_version(url: str, prefix: str = "") -> tuple[int, str]:
     content = ""
     
-    if "api.github.com" in url:
-        headers = {"User-Agent": "version-checker"}
-        headers["Accept"] = "application/vnd.github+json"
-        # .env格式： GITHUB_TOKEN=your_token_here
-        token = os.getenv("GITHUB_TOKEN")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+    try:
+        if "api.github.com" in url:
+            headers = {"User-Agent": "version-checker"}
+            headers["Accept"] = "application/vnd.github+json"
+            # .env格式： GITHUB_TOKEN=your_token_here
+            token = os.getenv("GITHUB_TOKEN")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            
+            resp = requests.get(url, headers=headers, timeout=15)
+            
+            if resp.status_code == 403:
+                remaining = resp.headers.get("X-RateLimit-Remaining")
+                reset = resp.headers.get("X-RateLimit-Reset")
+                if remaining == "0" and reset:
+                    reset_ts = int(reset)
+                    wait_s = max(0, reset_ts - int(time.time()))
+                    return 1, (
+                        f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
+                    )
+                return 1, f"GitHub API 403: {resp.text}"
+            
+            if resp.status_code != 200:
+                return 1, f"GitHub API 请求失败: {resp.status_code}, {resp.text}"
+            
+            data = resp.json()
+            content = " ".join([tag.get("name", "") for tag in data])
         
-        resp = requests.get(url, headers=headers, timeout=15)
-        
-        if resp.status_code == 403:
-            remaining = resp.headers.get("X-RateLimit-Remaining")
-            reset = resp.headers.get("X-RateLimit-Reset")
-            if remaining == "0" and reset:
-                reset_ts = int(reset)
-                wait_s = max(0, reset_ts - int(time.time()))
-                raise RuntimeError(
-                    f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
-                )
-            raise RuntimeError(f"GitHub API 403: {resp.text}")
-        
-        if resp.status_code != 200:
-            raise RuntimeError(f"GitHub API 请求失败: {resp.status_code}, {resp.text}")
-        
-        data = resp.json()
-        content = " ".join([tag.get("name", "") for tag in data])
-    
-    else:
-        sess = requests.Session()
-        
-        try:
-            r = sess.get(url, timeout=(2, 5))
-            r.raise_for_status()
-            content = r.text
-        except Exception:
-            r = sess.get(url, timeout=(2, 10))
-            r.raise_for_status()
-            content = r.text
+        else:
+            sess = requests.Session()
+            
+            try:
+                r = sess.get(url, timeout=(2, 5))
+                r.raise_for_status()
+                content = r.text
+            except Exception:
+                r = sess.get(url, timeout=(2, 10))
+                r.raise_for_status()
+                content = r.text
+    except Exception as e:
+        return 1, f"获取版本信息失败: {e}"
     
     if "nginx.org/en/download.html" in url:
         # Nginx download page has a dedicated "Stable version" row.
@@ -381,7 +384,7 @@ def get_stable_version(url: str, prefix: str = "") -> str:
         if m:
             stable_version = m.group(1)
             if not prefix or stable_version.startswith(prefix):
-                return stable_version
+                return 0, stable_version
 
     versions = []
     
@@ -409,7 +412,7 @@ def get_stable_version(url: str, prefix: str = "") -> str:
     
     versions = list(set(versions))
     if not versions:
-        raise ValueError(f"未找到前缀为 {prefix} 的版本")
+        return 1, f"未找到前缀为 {prefix} 的版本"
     
     def version_key(v: str):
         # Handle OpenSSH format: x.y.zpN
@@ -438,7 +441,7 @@ def get_stable_version(url: str, prefix: str = "") -> str:
     
     latest_version = max(versions, key=version_key)
     # Convert underscores to dots for output format
-    return latest_version.replace('_', '.')
+    return 0, latest_version.replace('_', '.')
 
 
 def get_eol_date(software: str, version: str) -> str:
