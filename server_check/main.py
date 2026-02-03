@@ -4,6 +4,7 @@ import datetime
 import sys
 import os
 from colorama import Fore
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def server_info(client, filename):
@@ -214,6 +215,37 @@ def monitors(client, filename):
             else:
                 f.write(f"- **{exporter}：** ☐ 未运行\n")
         
+def inspect_server(ip, client, path):
+    print_info(f"当前操作的服务器：[{ip}]\n")
+    hostname, err, _ = run_command(client, "hostname")
+    timestamp = datetime.datetime.now().strftime("%Y%m")
+    group = sys.argv[2] if len(sys.argv) > 2 else None
+    file_path = f"{path}/{group}/{timestamp}"
+
+    try:
+        os.makedirs(file_path, exist_ok=True)
+    except Exception as e:
+        print_error(f"创建目录 {file_path} 失败：{e}")
+
+    filename = f"{file_path}/{ip}_{hostname.strip()}.md"
+
+    try:
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"# 服务器巡检报告 - {hostname.strip()} ({ip})\n\n")
+            f.write(f"- 生成时间：`{now_str}`\n\n")
+            f.write("---\n\n")
+
+        server_info(client, filename)
+        system_resources(client, filename)
+        security_info(client, filename)
+        service_status(client, filename)
+        network_info(client, filename)
+        log_error(client, filename)
+        monitors(client, filename)
+    except Exception as e:
+        print_error(f"[{ip}] 执行失败：{e}")
+
 
 def run(clients):
     default_path = f"server_check/reports"
@@ -239,33 +271,17 @@ def run(clients):
         if not path:
             path = default_path
     print_info("报告将保存到: " + path + "\n")
-    for ip, client in clients:
-        print_info(f"当前操作的服务器：[{ip}]")
-        hostname, err, _ = run_command(client, "hostname")
-        timestamp = datetime.datetime.now().strftime("%Y%m")
-        group = sys.argv[2] if len(sys.argv) > 2 else None
-        file_path = f"{path}/{group}/{timestamp}"
 
-        try:
-            os.makedirs(file_path, exist_ok=True)
-        except Exception as e:
-            print_error(f"创建目录 {file_path} 失败：{e}")
+    max_workers = int(os.getenv("MAX_WORKERS"))
 
-        filename = f"{file_path}/{ip}_{hostname.strip()}.md"
-
-        try:
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(f"# 服务器巡检报告 - {hostname.strip()} ({ip})\n\n")
-                f.write(f"- 生成时间：`{now_str}`\n\n")
-                f.write("---\n\n")
-
-            server_info(client, filename)
-            system_resources(client, filename)
-            security_info(client, filename)
-            service_status(client, filename)
-            network_info(client, filename)
-            log_error(client, filename)
-            monitors(client, filename)
-        except Exception as e:
-            print_error(f"[{ip}] 执行失败：{e}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_ip = {
+            executor.submit(inspect_server, ip, client, path): ip
+            for ip, client in clients
+        }
+        for future in as_completed(future_to_ip):
+            ip = future_to_ip[future]
+            try:
+                future.result()
+            except Exception as e:
+                print_error(f"[{ip}] 执行失败：{e}")
