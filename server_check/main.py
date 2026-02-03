@@ -1,4 +1,4 @@
-from utils.output import print_info, print_error
+from utils.output import print_info, print_error, buffer_output
 from utils.ssh_utils import run_command, run_command_live
 import datetime
 import sys
@@ -216,35 +216,36 @@ def monitors(client, filename):
                 f.write(f"- **{exporter}：** ☐ 未运行\n")
         
 def inspect_server(ip, client, path):
-    print_info(f"当前操作的服务器：[{ip}]\n")
-    hostname, err, _ = run_command(client, "hostname")
-    timestamp = datetime.datetime.now().strftime("%Y%m")
-    group = sys.argv[2] if len(sys.argv) > 2 else None
-    file_path = f"{path}/{group}/{timestamp}"
+    with buffer_output():
+        print_info(f"当前操作的服务器：[{ip}]")
+        hostname, err, _ = run_command(client, "hostname")
+        timestamp = datetime.datetime.now().strftime("%Y%m")
+        group = sys.argv[2] if len(sys.argv) > 2 else None
+        file_path = f"{path}/{group}/{timestamp}"
 
-    try:
-        os.makedirs(file_path, exist_ok=True)
-    except Exception as e:
-        print_error(f"创建目录 {file_path} 失败：{e}")
+        try:
+            os.makedirs(file_path, exist_ok=True)
+        except Exception as e:
+            print_error(f"创建目录 {file_path} 失败：{e}")
 
-    filename = f"{file_path}/{ip}_{hostname.strip()}.md"
+        filename = f"{file_path}/{ip}_{hostname.strip()}.md"
 
-    try:
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(f"# 服务器巡检报告 - {hostname.strip()} ({ip})\n\n")
-            f.write(f"- 生成时间：`{now_str}`\n\n")
-            f.write("---\n\n")
+        try:
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(f"# 服务器巡检报告 - {hostname.strip()} ({ip})\n\n")
+                f.write(f"- 生成时间：`{now_str}`\n\n")
+                f.write("---\n\n")
 
-        server_info(client, filename)
-        system_resources(client, filename)
-        security_info(client, filename)
-        service_status(client, filename)
-        network_info(client, filename)
-        log_error(client, filename)
-        monitors(client, filename)
-    except Exception as e:
-        print_error(f"[{ip}] 执行失败：{e}")
+            server_info(client, filename)
+            system_resources(client, filename)
+            security_info(client, filename)
+            service_status(client, filename)
+            network_info(client, filename)
+            log_error(client, filename)
+            monitors(client, filename)
+        except Exception as e:
+            print_error(f"[{ip}] 执行失败：{e}")
 
 
 def run(clients):
