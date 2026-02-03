@@ -201,23 +201,42 @@ def log_error(client, filename):
     return None
 
 def run(clients):
-    default_path = f"server_check/reports/{group}/{timestamp}"
-    path = input(Fore.MAGENTA + f"请输入报告保存目录 (默认: {default_path}): ").strip()
-    if not path:
-        path = default_path
-    print_info("MySQL将安装到: " + path + "\n")
+    default_path = f"server_check/reports"
+    if sys.platform.startswith("win"):
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askdirectory(
+            title="选择报告保存目录",
+            initialdir=default_path,
+            mustexist=True,
+        )
+        root.destroy()
+        if not path:
+            print_info("未选择目录，将使用默认地址: " + default_path)
+        if not path:
+            path = default_path
+    else:
+        path = input(Fore.MAGENTA + f"请输入报告保存目录 (默认: {default_path}): ").strip()
+        if not path:
+            path = default_path
+    print_info("报告将保存到: " + path + "\n")
     for ip, client in clients:
         print_info(f"当前操作的服务器：[{ip}]")
         hostname, err, _ = run_command(client, "hostname")
         timestamp = datetime.datetime.now().strftime("%Y%m")
         group = sys.argv[2] if len(sys.argv) > 2 else None
+        file_path = f"{path}/{group}/{timestamp}"
 
         try:
-            os.makedirs(path, exist_ok=True)
+            os.makedirs(file_path, exist_ok=True)
         except Exception as e:
-            print_error(f"创建目录 {path} 失败：{e}")
+            print_error(f"创建目录 {file_path} 失败：{e}")
 
-        filename = f"{path}/{ip}_{hostname.strip()}.md"
+        filename = f"{file_path}/{ip}_{hostname.strip()}.md"
 
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
