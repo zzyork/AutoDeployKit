@@ -1,5 +1,5 @@
 from utils.output import print_info, print_error
-from utils.ssh_utils import run_command
+from utils.ssh_utils import run_command, run_command_live
 import datetime
 import sys
 import os
@@ -130,9 +130,9 @@ def service_status(client, filename):
 
         for service in services:
             out, err, code = run_command(client, f"systemctl status {service}")
-            if "could not be found" in (err or "") or "could not be found" in (out or ""):
-                print_info(f"{service}: 未安装或未找到服务")
-                continue
+            # if "could not be found" in (err or "") or "could not be found" in (out or ""):
+            #     print_info(f"{service}: 未安装或未找到服务")
+            #     continue
 
             status, err, code = run_command(client, f"systemctl is-active {service}")
             if err and "could not be found" not in err:
@@ -199,6 +199,32 @@ def log_error(client, filename):
         f.write("```\n\n")
         f.write("---\n\n")
     return None
+
+def monitors(client, filename):
+    exporters_out, _, _ = run_command(
+        client,
+        "systemctl list-unit-files 2>&1 | grep -i 'exporter' | awk '{print $1}'"
+    )
+    exporters = [line.strip() for line in exporters_out.splitlines() if line.strip()]
+    if not exporters:
+        print_info("未找到任何已安装的exporter！")
+        return None
+    
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write("## 七、监控状态\n\n")
+    for exporter in exporters:
+        status_out, _, status = run_command(client, f"systemctl is-active {exporter}")
+        if status == 1:
+            print_error("exporter状态查询失败！")
+
+    with open(filename, "a", encoding="utf-8") as f:
+        if status.strip() == "active":
+            f.write(f"- **{status_out}：** ✅ 运行中\n")
+        else:
+            f.write(f"- **{status_out}：** ☐ 未运行\n")
+    print(f"\n")
+    return None
+        
 
 def run(clients):
     default_path = f"server_check/reports"
