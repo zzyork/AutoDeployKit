@@ -129,21 +129,15 @@ def service_status(client, filename):
         f.write("## 四、服务与进程状态\n\n")
 
         for service in services:
-            out, err, code = run_command(client, f"systemctl status {service}")
-            # if "could not be found" in (err or "") or "could not be found" in (out or ""):
-            #     print_info(f"{service}: 未安装或未找到服务")
-            #     continue
-
-            status, err, code = run_command(client, f"systemctl is-active {service}")
+            info, err, _ = run_command(client, f"systemctl is-active {service}")
             if err and "could not be found" not in err:
                 print_error("获取信息出错：" + err)
                 continue
 
-            if status.strip() == "active":
+            if info.strip() == "active":
                 f.write(f"- **{service}：** ✅ 运行中\n")
             else:
                 f.write(f"- **{service}：** ☐ 未运行\n")
-        print(f"\n")
 
         f.write("\n---\n\n")
     return None
@@ -201,29 +195,24 @@ def log_error(client, filename):
     return None
 
 def monitors(client, filename):
-    exporters_out, _, _ = run_command(
-        client,
-        "systemctl list-unit-files 2>&1 | grep -i 'exporter' | awk '{print $1}'"
-    )
-    exporters = [line.strip() for line in exporters_out.splitlines() if line.strip()]
-    if not exporters:
-        print_info("未找到任何已安装的exporter！")
-        return None
-    
     with open(filename, "a", encoding="utf-8") as f:
+        exporters_out, _, _ = run_command(
+            client,
+            "systemctl list-unit-files 2>&1 | grep -i 'exporter' | awk '{print $1}'"
+        )
+        exporters = [line.strip() for line in exporters_out.splitlines() if line.strip()]
         f.write("## 七、监控状态\n\n")
-    for exporter in exporters:
-        status_out, _, status = run_command(client, f"systemctl is-active {exporter}")
-        if status == 1:
-            print_error("exporter状态查询失败！")
-
-    with open(filename, "a", encoding="utf-8") as f:
-        if status.strip() == "active":
-            f.write(f"- **{status_out}：** ✅ 运行中\n")
-        else:
-            f.write(f"- **{status_out}：** ☐ 未运行\n")
-    print(f"\n")
-    return None
+        if not exporters:
+            f.write("未找到任何已安装的exporter！\n")
+        for exporter in exporters:
+            status_out, _, status = run_command(client, f"systemctl is-active {exporter}")
+            if status == 1:
+                print_error("exporter状态查询失败！")
+                return None
+            if status_out.strip() == "active":
+                f.write(f"- **{status_out}：** ✅ 运行中\n")
+            else:
+                f.write(f"- **{status_out}：** ☐ 未运行\n")
         
 
 def run(clients):
@@ -277,5 +266,6 @@ def run(clients):
             service_status(client, filename)
             network_info(client, filename)
             log_error(client, filename)
+            monitors(client, filename)
         except Exception as e:
             print_error(f"[{ip}] 执行失败：{e}")
