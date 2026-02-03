@@ -210,9 +210,9 @@ def monitors(client, filename):
                 print_error("exporter状态查询失败！")
                 return None
             if status_out.strip() == "active":
-                f.write(f"- **{status_out}：** ✅ 运行中\n")
+                f.write(f"- **{exporter}：** ✅ 运行中\n")
             else:
-                f.write(f"- **{status_out}：** ☐ 未运行\n")
+                f.write(f"- **{exporter}：** ☐ 未运行\n")
         
 
 def run(clients):
