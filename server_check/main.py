@@ -3,6 +3,7 @@ from utils.ssh_utils import run_command
 import datetime
 import sys
 import os
+from colorama import Fore
 
 
 def server_info(client, filename):
@@ -200,19 +201,23 @@ def log_error(client, filename):
     return None
 
 def run(clients):
+    default_path = f"server_check/reports/{group}/{timestamp}"
+    path = input(Fore.MAGENTA + f"请输入报告保存目录 (默认: {default_path}): ").strip()
+    if not path:
+        path = default_path
+    print_info("MySQL将安装到: " + path + "\n")
     for ip, client in clients:
         print_info(f"当前操作的服务器：[{ip}]")
         hostname, err, _ = run_command(client, "hostname")
         timestamp = datetime.datetime.now().strftime("%Y%m")
         group = sys.argv[2] if len(sys.argv) > 2 else None
 
-        dir_name = f"server_check/reports/{group}/{timestamp}"
         try:
-            os.makedirs(dir_name, exist_ok=True)
+            os.makedirs(path, exist_ok=True)
         except Exception as e:
-            print_error(f"创建目录 {dir_name} 失败：{e}")
+            print_error(f"创建目录 {path} 失败：{e}")
 
-        filename = f"{dir_name}/{ip}_{hostname.strip()}.md"
+        filename = f"{path}/{ip}_{hostname.strip()}.md"
 
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
