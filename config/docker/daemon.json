@@ -10,3 +10,57 @@
   	"max-size" :"1g","max-file":"1"
   }
 }
+
+
+// {
+//   "data-root": "/var/lib/docker",
+//   "exec-opts": ["native.cgroupdriver=systemd"],
+//   "live-restore": true,
+
+//   "log-driver": "json-file",
+//   "log-opts": {
+//     "max-size": "50m",
+//     "max-file": "5"
+//   },
+
+//   "registry-mirrors": [
+//     "https://docker.m.daocloud.io",
+//     "https://mirror.gcr.io"
+//   ],
+
+//   "dns": ["223.5.5.5", "119.29.29.29", "8.8.8.8"],
+//   "dns-search": [],
+//   "hosts": ["unix:///var/run/docker.sock"],
+
+//   "default-address-pools": [
+//     { "base": "10.10.0.0/16", "size": 24 },
+//     { "base": "10.20.0.0/16", "size": 24 }
+//   ],
+
+//   "bip": "172.18.0.1/16",
+//   "fixed-cidr": "172.18.0.0/16",
+//   "mtu": 1500,
+//   "iptables": true,
+//   "ip-forward": true,
+
+//   "insecure-registries": [
+//     "registry.local:5000",
+//     "harbor.local"
+//   ],
+
+//   "features": {
+//     "buildkit": true
+//   },
+
+//   "max-concurrent-downloads": 10,
+//   "max-concurrent-uploads": 5,
+//   "max-download-attempts": 5,
+
+//   "debug": false,
+
+//   "proxies": {
+//     "http-proxy": "http://192.168.0.250:7897",
+//     "https-proxy": "http://192.168.0.250:7897",
+//     "no-proxy": "localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+//   }
+// }

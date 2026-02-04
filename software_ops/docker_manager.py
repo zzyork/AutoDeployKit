@@ -85,8 +85,13 @@ def install_docker_compose(client):
     if current_version != "":
         print_info("docker-compose 已安装，版本：" + current_version)
         return None
-    stable_version = get_stable_version("https://api.github.com/repos/docker/compose/tags?page=1&per_page=5")
-    print_info("docker-compose 最新稳定版为：" + stable_version)
+    status, info = get_stable_version("https://api.github.com/repos/docker/compose/tags?page=1&per_page=5")
+    if status == 0:
+        stable_version = info
+        print_info("docker-compose最新稳定版本为：" + stable_version)
+    else:
+        print_error(info)
+        return
     if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装docker-compose " + stable_version + "......\n")
 
