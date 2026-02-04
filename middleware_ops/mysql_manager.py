@@ -481,7 +481,7 @@ def list_mysql_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_mysql(client):
-    global current_version, status, latest_version
+    global current_version, status, lts_version
     current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
     try:
@@ -489,8 +489,8 @@ def manage_mysql(client):
     except Exception:
         status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", "8.0.")
     if status == 0:
-        latest_version = info
-        print_info("Mysql最新LTS版本为：" + latest_version)
+        lts_version = info
+        print_info("Mysql最新LTS版本为：" + lts_version)
     else:
         print_error(info)
         return
@@ -502,7 +502,7 @@ def manage_mysql(client):
             print("0. 返回/跳过")
             choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '0'], default="0")
             if choice == "1":
-                install_mysql(client, version=latest_version)
+                install_mysql(client, version=lts_version)
             elif choice == "2":
                 while True:
                     input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.33): ").strip()
@@ -525,7 +525,7 @@ def manage_mysql(client):
                 print("无效选项，请重新输入")
         else:
             print_success("当前Mysql版本：" + current_version)
-            print_info("Mysql最新LTS版本为：" + latest_version)
+            print_info("Mysql最新LTS版本为：" + lts_version)
             print("1. 升级 Mysql 到最新LTS版本")
             print("2. 备份当前 Mysql 版本")
             print("3. 回滚 Mysql 到之前版本")

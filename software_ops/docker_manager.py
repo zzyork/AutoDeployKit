@@ -137,8 +137,13 @@ def manage_docker(client):
     global current_version, status, stable_version
     current_version, _, status = run_command(client, r'docker -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
-    stable_version = get_stable_version("https://download.docker.com/linux/static/stable/x86_64/")
-    print_info("Docker最新稳定版为：" + stable_version)
+    status, info = get_stable_version("https://download.docker.com/linux/static/stable/x86_64/")
+    if status == 0:
+        stable_version = info
+        print_info("Docker最新稳定版为：" + stable_version)
+    else:
+        print_error(info)
+        return
     while True:
         if current_version == "":
             print("========== docker软件管理 ==========")
