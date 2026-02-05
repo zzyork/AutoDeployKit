@@ -130,15 +130,13 @@ def service_status(client, filename):
         f.write("## 四、服务与进程状态\n\n")
 
         for service in services:
-            info, err, _ = run_command(client, f"systemctl is-active {service}")
-            if err and "could not be found" not in err:
-                print_error("获取信息出错：" + err)
-                continue
-
-            if info.strip() == "active":
-                f.write(f"- **{service}：** ✅ 运行中\n")
-            elif info.strip() == "inactive":
-                f.write(f"- **{service}：** ❌ 未运行\n")
+            info, _, _ = run_command(client, f"systemctl show -p LoadState --value {service}")
+            if info.strip() == "loaded":
+                info, _, _ = run_command(client, f"systemctl is-active {service}")
+                if info.strip() == "active":
+                    f.write(f"- **{service}：** ✅ 运行中\n")
+                elif info.strip() == "inactive":
+                    f.write(f"- **{service}：** ❌ 未运行\n")
 
         f.write("\n---\n\n")
     return None
@@ -177,24 +175,19 @@ def network_info(client, filename):
         f.write("---\n\n")
     return None
 
-def log_error(client, filename):
-    log_paths = "/var/log/syslog /var/log/firewalld /var/log/messages /var/log/auth.log /var/log/cron /var/log/dnf.log".split()
+def log_error(client, filename, days=3, lines=200):
+    cmd = (
+        f'journalctl --since "{days} days ago" -p err..alert --no-pager '
+        f'| tail -n {lines}'
+    )
+    out, _, _ = run_command(client, cmd)
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
-        f.write("### 系统错误日志（最近 3 天内，最近 20 行）\n\n```text\n")
-        for log_path in log_paths:
-            if log_path.endswith("dnf.log"):
-                cmd = f"cat {log_path} | grep -Ev \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
-            else:
-                cmd = f"cat {log_path} | grep -v \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
+        f.write(f"### 系统错误日志（最近 {days} 天内，优先级 err..alert，最近 {lines} 行）\n\n```text\n")
+        f.write(out.strip() + "\n" if out.strip() else "(最近三天未匹配到 err..alert 级别日志)\n")
+        f.write("```\n\n---\n\n")
 
-            log_errors, _, _ = run_command(client, cmd)
-            if log_errors.strip():
-                f.write(f"# 日志文件：{log_path}\n")
-                f.write(f"{log_errors.strip()}\n\n" if log_errors.strip() else "无\n\n")
-        f.write("```\n\n")
-        f.write("---\n\n")
     return None
 
 
