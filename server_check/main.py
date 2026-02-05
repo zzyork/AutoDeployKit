@@ -178,22 +178,25 @@ def network_info(client, filename):
     return None
 
 def log_error(client, filename):
-    log_paths = "/var/log/syslog /var/log/messages /var/log/auth.log /var/log/cron /var/log/dnf.log".split()
+    log_paths = "/var/log/syslog /var/log/firewalld /var/log/messages /var/log/auth.log /var/log/cron /var/log/dnf.log".split()
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
-        f.write("### 系统错误日志（最近 20 行）\n\n```text\n")
+        f.write("### 系统错误日志（最近 3 天内，最近 20 行）\n\n```text\n")
         for log_path in log_paths:
-            log_errors, _, _ = run_command(
-                client,
-                f"grep -v \"ldapdb_canonuser_plug_init\" {log_path} | grep -E \"error|fail\" | tail -n 20"
-            )
+            if log_path.endswith("dnf.log"):
+                cmd = f"cat {log_path} | grep -Ev \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
+            else:
+                cmd = f"cat {log_path} | grep -v \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
+
+            log_errors, _, _ = run_command(client, cmd)
             if log_errors.strip():
                 f.write(f"# 日志文件：{log_path}\n")
                 f.write(f"{log_errors.strip()}\n\n" if log_errors.strip() else "无\n\n")
         f.write("```\n\n")
         f.write("---\n\n")
     return None
+
 
 def monitors(client, filename):
     with open(filename, "a", encoding="utf-8") as f:
