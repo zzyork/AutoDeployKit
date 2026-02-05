@@ -187,7 +187,7 @@ def log_error(client, filename):
         "-v end=\"$(date '+%s')\" "
         "'match($0, /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-9]{1,2} [0-9:]{8}/) "
         "{log_date=substr($0,1,15); cmd=\"date -d \\\"\" log_date \"\\\" +%s\"; cmd | getline ts; "
-        "close(cmd); if (ts>=start && ts<=end) print $0; next} {print $0}'"
+        "close(cmd); if (ts>=start && ts<=end) print $0}'"
     )
 
     with open(filename, "a", encoding="utf-8") as f:
@@ -210,9 +210,12 @@ def log_error(client, filename):
                 f.write("无\n\n")
                 continue
 
-            log_cmd = f"grep -Ev \"{noise_patterns}\" {log_path} | grep -E \"{error_patterns}\" | tail -n 20"
-            if not journalctl_available:
-                log_cmd = f"{date_filter_cmd} {log_path} | grep -Ev \"{noise_patterns}\" | grep -E \"{error_patterns}\" | tail -n 20"
+            log_cmd = (
+                f"{date_filter_cmd} {log_path} | "
+                f"grep -Ev \"{noise_patterns}\" | "
+                f"grep -E \"{error_patterns}\" | "
+                "tail -n 20"
+            )
 
             log_errors, _, _ = run_command(client, log_cmd)
             f.write(f"# 日志文件：{log_path}\n")
