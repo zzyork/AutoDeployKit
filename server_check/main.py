@@ -130,15 +130,14 @@ def service_status(client, filename):
         f.write("## 四、服务与进程状态\n\n")
 
         for service in services:
-            info, err, _ = run_command(client, f"systemctl is-active {service}")
-            if err and "could not be found" not in err:
-                print_error("获取信息出错：" + err)
-                continue
-
-            if info.strip() == "active":
-                f.write(f"- **{service}：** ✅ 运行中\n")
-            elif info.strip() == "inactive":
-                f.write(f"- **{service}：** ❌ 未运行\n")
+            load_state, _, _ = run_command(client, f"systemctl show -p LoadState --value {service}")
+            load_state = load_state.strip()
+            if load_state == "loaded":
+                info, _, _ = run_command(client, f"systemctl is-active {service}")
+                if info.strip() == "active":
+                    f.write(f"- **{service}：** ✅ 运行中\n")
+                elif info.strip() == "inactive":
+                    f.write(f"- **{service}：** ❌ 未运行\n")
 
         f.write("\n---\n\n")
     return None
