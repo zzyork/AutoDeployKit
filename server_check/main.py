@@ -179,20 +179,45 @@ def network_info(client, filename):
 
 def log_error(client, filename):
     log_paths = "/var/log/syslog /var/log/firewalld /var/log/messages /var/log/auth.log /var/log/cron /var/log/dnf.log".split()
+    noise_patterns = "ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter"
+    error_patterns = "Error|ERROR|Failed|CRITICAL"
+    journalctl_path, _, _ = run_command(client, "command -v journalctl")
+    journalctl_available = bool(journalctl_path.strip())
+    date_filter_cmd = (
+        "awk -v start=\"$(date -d '3 days ago' '+%s')\" "
+        "-v end=\"$(date '+%s')\" "
+        "'match($0, /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-9]{1,2} [0-9:]{8}/) "
+        "{log_date=substr($0,1,15); cmd=\"date -d \\\"\" log_date \"\\\" +%s\"; cmd | getline ts; "
+        "close(cmd); if (ts>=start && ts<=end) print $0; next} {print $0}'"
+    )
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
         f.write("### 系统错误日志（最近 3 天内，最近 20 行）\n\n```text\n")
+        if journalctl_available:
+            journalctl_cmd = (
+                "journalctl --since \"3 days ago\" -p err..alert "
+                f"| grep -Ev \"{noise_patterns}\" "
+                f"| grep -E \"{error_patterns}\" "
+                "| tail -n 20"
+            )
+            journalctl_errors, _, _ = run_command(client, journalctl_cmd)
+            f.write("# journalctl\n")
+            f.write(f"{journalctl_errors.strip()}\n\n" if journalctl_errors.strip() else "无\n\n")
         for log_path in log_paths:
-            if log_path.endswith("dnf.log"):
-                cmd = f"cat {log_path} | grep -Ev \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
-            else:
-                cmd = f"cat {log_path} | grep -v \"ldapdb_canonuser_plug_init|INFO|info|DEBUG|WARNING|exporter\" | grep -E \"Error|ERROR|Failed|CRITICAL\" | tail -n 20"
-
-            log_errors, _, _ = run_command(client, cmd)
-            if log_errors.strip():
+            exists, _, _ = run_command(client, f"test -f {log_path} && echo 1 || echo 0")
+            if exists.strip() != "1":
                 f.write(f"# 日志文件：{log_path}\n")
-                f.write(f"{log_errors.strip()}\n\n" if log_errors.strip() else "无\n\n")
+                f.write("无\n\n")
+                continue
+
+            log_cmd = f"grep -Ev \"{noise_patterns}\" {log_path} | grep -E \"{error_patterns}\" | tail -n 20"
+            if not journalctl_available:
+                log_cmd = f"{date_filter_cmd} {log_path} | grep -Ev \"{noise_patterns}\" | grep -E \"{error_patterns}\" | tail -n 20"
+
+            log_errors, _, _ = run_command(client, log_cmd)
+            f.write(f"# 日志文件：{log_path}\n")
+            f.write(f"{log_errors.strip()}\n\n" if log_errors.strip() else "无\n\n")
         f.write("```\n\n")
         f.write("---\n\n")
     return None
