@@ -124,7 +124,7 @@ def security_info(client, filename):
     return None
 
 def service_status(client, filename):
-    services = "sshd nginx mysqld redis dockerd rabbitmq DmServiceDMSERVER".split()
+    services = "sshd nginx mysqld redis dockerd rabbitmq DmServiceDMSERVER supervisord keepalived".split()
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 四、服务与进程状态\n\n")
@@ -137,8 +137,8 @@ def service_status(client, filename):
 
             if info.strip() == "active":
                 f.write(f"- **{service}：** ✅ 运行中\n")
-            else:
-                f.write(f"- **{service}：** ☐ 未运行\n")
+            elif info.strip() == "inactive":
+                f.write(f"- **{service}：** ❌ 未运行\n")
 
         f.write("\n---\n\n")
     return None
@@ -178,19 +178,19 @@ def network_info(client, filename):
     return None
 
 def log_error(client, filename):
-    logs_error, err, _ = run_command(
-        client,
-        "grep -v \"ldapdb_canonuser_plug_init\" /var/log/messages | grep -E \"error|fail|critical\" | tail -n 20"
-    )
-
-    if err:
-        print_error("获取信息出错：" + err)
-        return None
+    log_paths = "/var/log/syslog /var/log/messages /var/log/auth.log /var/log/cron /var/log/dnf.log".split()
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
         f.write("### 系统错误日志（最近 20 行）\n\n```text\n")
-        f.write(f"{logs_error.strip()}\n" if logs_error.strip() else "无\n")
+        for log_path in log_paths:
+            log_errors, _, _ = run_command(
+                client,
+                f"grep -v \"ldapdb_canonuser_plug_init\" {log_path} | grep -E \"error|fail\" | tail -n 20"
+            )
+            if log_errors.strip():
+                f.write(f"# 日志文件：{log_path}\n")
+                f.write(f"{log_errors.strip()}\n\n" if log_errors.strip() else "无\n\n")
         f.write("```\n\n")
         f.write("---\n\n")
     return None
@@ -246,7 +246,6 @@ def inspect_server(ip, client, path):
             monitors(client, filename)
         except Exception as e:
             print_error(f"[{ip}] 执行失败：{e}")
-
 
 def run(clients):
     default_path = f"server_check/reports"
