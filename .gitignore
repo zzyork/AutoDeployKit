@@ -147,3 +147,4 @@ cython_debug/
 packages/
 hosts
 .tmp_firewalld
+server_check/.last_dir

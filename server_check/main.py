@@ -274,6 +274,30 @@ def inspect_server(ip, client, path):
         except Exception as e:
             print_error(f"[{ip}] 执行失败：{e}")
 
+def _last_dir_state_path():
+    return os.path.join(os.path.dirname(__file__), ".last_dir")
+
+def _load_last_dir(default_path):
+    state_path = _last_dir_state_path()
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            last_dir = f.read().strip()
+        if last_dir and os.path.isdir(last_dir):
+            return last_dir
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return default_path
+
+def _save_last_dir(selected_path):
+    state_path = _last_dir_state_path()
+    try:
+        with open(state_path, "w", encoding="utf-8") as f:
+            f.write(selected_path)
+    except Exception:
+        pass
+
 def run(clients):
     default_path = f"server_check/reports"
     if sys.platform.startswith("win"):
@@ -283,9 +307,10 @@ def run(clients):
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
+        initial_dir = _load_last_dir(default_path)
         path = filedialog.askdirectory(
             title="选择报告保存目录",
-            initialdir=default_path,
+            initialdir=initial_dir,
             mustexist=True,
         )
         root.destroy()
@@ -293,6 +318,8 @@ def run(clients):
             print_info("未选择目录，将使用默认地址: " + default_path)
         if not path:
             path = default_path
+        else:
+            _save_last_dir(os.path.abspath(path))
     else:
         path = input(Fore.MAGENTA + f"请输入报告保存目录 (默认: {default_path}): ").strip()
         if not path:
