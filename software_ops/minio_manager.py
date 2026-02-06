@@ -7,9 +7,9 @@ from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
 
 def install_minio(client):
-    print_info("Minio最新稳定版为：" + latest_version)
+    print_info("Minio最新稳定版为：" + stable_version)
     if confirm_yes_no("是否安装？", default=False):
-        print_info("开始安装minio " + latest_version + "......\n")
+        print_info("开始安装minio " + stable_version + "......\n")
         
         default_install_path = "/usr/local/minio2504"
         install_path = input(Fore.MAGENTA + f"请输入Minio安装目录 (默认: {default_install_path}): ").strip()
@@ -119,11 +119,11 @@ def install_minio(client):
     return None
 
 def manage_minio(client):
-    global current_version, status, latest_version
-    latest_version = "RELEASE.2025-04-22T22-12-26Z"
+    global current_version, status, stable_version
+    stable_version = "RELEASE.2025-04-22T22-12-26Z"
     current_version, _, status = run_command(client, r"minio -v 2>&1| grep RELEASE | awk '{print $3}'")
     current_version = current_version.strip() if current_version else ""
-    print_info("Minio最新稳定版：" + latest_version)
+    print_info("Minio最新稳定版：" + stable_version)
     while True:
         print("=== minio软件管理 ===")
         if current_version == "":

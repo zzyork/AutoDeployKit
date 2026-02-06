@@ -439,9 +439,9 @@ def get_stable_version(url: str, prefix: str = "") -> tuple[int, str]:
         except ValueError:
             return (-1, -1, -1, -1)
     
-    latest_version = max(versions, key=version_key)
+    stable_version = max(versions, key=version_key)
     # Convert underscores to dots for output format
-    return 0, latest_version.replace('_', '.')
+    return 0, stable_version.replace('_', '.')
 
 
 def get_eol_date(software: str, version: str) -> str:

@@ -10,14 +10,14 @@ from utils.choice import confirm_yes_no, menu_choice
 
 
 def install_mysqld_exporter(client):
-    latest_version = get_stable_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
-    print_info("mysqld_exporter最新发行版为：" + latest_version)
+    stable_version = get_stable_version("https://api.github.com/repos/prometheus/mysqld_exporter/tags?page=1&per_page=5")
+    print_info("mysqld_exporter最新发行版为：" + stable_version)
     if confirm_yes_no("是否安装？", default=False):
-        print_info("开始安装mysqld_exporter " + latest_version + "......")
+        print_info("开始安装mysqld_exporter " + stable_version + "......")
 
-        local_path = os.path.join("packages", "mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz")
-        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + latest_version + "/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
-        remote_path = "/usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64.tar.gz"
+        local_path = os.path.join("packages", "mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz")
+        url = "https://github.com/prometheus/mysqld_exporter/releases/download/v" + stable_version + "/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
+        remote_path = "/usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64.tar.gz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
         _, wget_status = run_command_live(client, wget_cmd)
@@ -35,7 +35,7 @@ def install_mysqld_exporter(client):
                 
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "mv /usr/local/src/mysqld_exporter-" + latest_version + ".linux-amd64 /usr/local/mysqld-exporter"
+            "mv /usr/local/src/mysqld_exporter-" + stable_version + ".linux-amd64 /usr/local/mysqld-exporter"
         ]
 
         cmd_status = 0
@@ -157,5 +157,5 @@ sed -i '/scrape_configs:/a\\{mysql_config}' {prometheus_config_path}
             print_error(f"错误信息: {err.strip()}")
 
 
-def manage_mysql_monitor(client):
+def manage_mysql_exporter(client):
     install_mysqld_exporter(client)
