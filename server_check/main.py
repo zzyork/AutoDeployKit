@@ -178,17 +178,20 @@ def network_info(client, filename):
 def log_error(client, filename, days=3, lines=200):
     cmd = (
         f'journalctl --since "{days} days ago" -p err..alert --no-pager '
+        f'_COMM!=systemd-coredump SYSLOG_IDENTIFIER!=systemd-coredump '
+        f'| grep -v "ldapdb_canonuser_plug_init" '
         f'| tail -n {lines}'
     )
     out, _, _ = run_command(client, cmd)
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
-        f.write(f"### 系统错误日志（最近 {days} 天内，优先级 err..alert，最近 {lines} 行）\n\n```text\n")
+        f.write(f"### 系统错误日志（最近 {days} 天内，最近 {lines} 行）\n\n```text\n")
         f.write(out.strip() + "\n" if out.strip() else "(最近三天未匹配到 err..alert 级别日志)\n")
         f.write("```\n\n---\n\n")
 
     return None
+
 
 
 def monitors(client, filename):
