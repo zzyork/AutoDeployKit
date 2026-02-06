@@ -1,8 +1,10 @@
-from utils.output import print_info, print_error
-from utils.ssh_utils import run_command
+from utils.output import print_info, print_error, buffer_output
+from utils.ssh_utils import run_command, run_command_live
 import datetime
 import sys
 import os
+from colorama import Fore
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def server_info(client, filename):
@@ -122,27 +124,19 @@ def security_info(client, filename):
     return None
 
 def service_status(client, filename):
-    services = "sshd nginx mysqld redis dockerd rabbitmq DmServiceDMSERVER".split()
+    services = "sshd nginx mysqld redis dockerd rabbitmq DmServiceDMSERVER supervisord keepalived".split()
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 四、服务与进程状态\n\n")
 
         for service in services:
-            out, err, code = run_command(client, f"systemctl status {service}")
-            if "could not be found" in (err or "") or "could not be found" in (out or ""):
-                print_info(f"{service}: 未安装或未找到服务")
-                continue
-
-            status, err, code = run_command(client, f"systemctl is-active {service}")
-            if err and "could not be found" not in err:
-                print_error("获取信息出错：" + err)
-                continue
-
-            if status.strip() == "active":
-                f.write(f"- **{service}：** ✅ 运行中\n")
-            else:
-                f.write(f"- **{service}：** ☐ 未运行\n")
-        print(f"\n")
+            info, _, _ = run_command(client, f"systemctl show -p LoadState --value {service}")
+            if info.strip() == "loaded":
+                info, _, _ = run_command(client, f"systemctl is-active {service}")
+                if info.strip() == "active":
+                    f.write(f"- **{service}：** ✅ 运行中\n")
+                elif info.strip() == "inactive":
+                    f.write(f"- **{service}：** ❌ 未运行\n")
 
         f.write("\n---\n\n")
     return None
@@ -181,38 +175,59 @@ def network_info(client, filename):
         f.write("---\n\n")
     return None
 
-def log_error(client, filename):
-    logs_error, err, _ = run_command(
-        client,
-        "grep -v \"ldapdb_canonuser_plug_init\" /var/log/messages | grep -E \"error|fail|critical\" | tail -n 20"
+def log_error(client, filename, days=3, lines=200):
+    cmd = (
+        f'journalctl --since "{days} days ago" -p err..alert --no-pager '
+        f'_COMM!=systemd-coredump SYSLOG_IDENTIFIER!=systemd-coredump '
+        f'| grep -v "ldapdb_canonuser_plug_init" '
+        f'| tail -n {lines}'
     )
-
-    if err:
-        print_error("获取信息出错：" + err)
-        return None
+    out, _, _ = run_command(client, cmd)
 
     with open(filename, "a", encoding="utf-8") as f:
         f.write("## 六、日志与系统错误\n\n")
-        f.write("### 系统错误日志（最近 20 行）\n\n```text\n")
-        f.write(f"{logs_error.strip()}\n" if logs_error.strip() else "无\n")
-        f.write("```\n\n")
-        f.write("---\n\n")
+        f.write(f"### 系统错误日志（最近 {days} 天内，最近 {lines} 行）\n\n```text\n")
+        f.write(out.strip() + "\n" if out.strip() else "(最近三天未匹配到 err..alert 级别日志)\n")
+        f.write("```\n\n---\n\n")
+
     return None
 
-def run(clients):
-    for ip, client in clients:
+
+
+def monitors(client, filename):
+    with open(filename, "a", encoding="utf-8") as f:
+        exporters_out, _, _ = run_command(
+            client,
+            "systemctl list-unit-files 2>&1 | grep -i 'exporter' | awk '{print $1}'"
+        )
+        exporters = [line.strip() for line in exporters_out.splitlines() if line.strip()]
+        f.write("## 七、监控状态\n\n")
+        if not exporters:
+            f.write("未找到任何已安装的exporter！\n")
+        for exporter in exporters:
+            status_out, _, status = run_command(client, f"systemctl is-active {exporter}")
+            if status == 1:
+                print_error("exporter状态查询失败！")
+                return None
+            if status_out.strip() == "active":
+                f.write(f"- **{exporter}：** ✅ 运行中\n")
+            else:
+                f.write(f"- **{exporter}：** ☐ 未运行\n")
+        
+def inspect_server(ip, client, path):
+    with buffer_output():
         print_info(f"当前操作的服务器：[{ip}]")
         hostname, err, _ = run_command(client, "hostname")
         timestamp = datetime.datetime.now().strftime("%Y%m")
         group = sys.argv[2] if len(sys.argv) > 2 else None
+        file_path = f"{path}/{group}/{timestamp}"
 
-        dir_name = f"server_check/reports/{group}/{timestamp}"
         try:
-            os.makedirs(dir_name, exist_ok=True)
+            os.makedirs(file_path, exist_ok=True)
         except Exception as e:
-            print_error(f"创建目录 {dir_name} 失败：{e}")
+            print_error(f"创建目录 {file_path} 失败：{e}")
 
-        filename = f"{dir_name}/{ip}_{hostname.strip()}.md"
+        filename = f"{file_path}/{ip}_{hostname.strip()}.md"
 
         try:
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -227,5 +242,45 @@ def run(clients):
             service_status(client, filename)
             network_info(client, filename)
             log_error(client, filename)
+            monitors(client, filename)
         except Exception as e:
             print_error(f"[{ip}] 执行失败：{e}")
+
+def run(clients):
+    default_path = f"server_check/reports"
+    if sys.platform.startswith("win"):
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askdirectory(
+            title="选择报告保存目录",
+            initialdir=default_path,
+            mustexist=True,
+        )
+        root.destroy()
+        if not path:
+            print_info("未选择目录，将使用默认地址: " + default_path)
+        if not path:
+            path = default_path
+    else:
+        path = input(Fore.MAGENTA + f"请输入报告保存目录 (默认: {default_path}): ").strip()
+        if not path:
+            path = default_path
+    print_info("报告将保存到: " + path + "\n")
+
+    max_workers = int(os.getenv("MAX_WORKERS"))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_ip = {
+            executor.submit(inspect_server, ip, client, path): ip
+            for ip, client in clients
+        }
+        for future in as_completed(future_to_ip):
+            ip = future_to_ip[future]
+            try:
+                future.result()
+            except Exception as e:
+                print_error(f"[{ip}] 执行失败：{e}")

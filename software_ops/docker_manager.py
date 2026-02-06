@@ -85,8 +85,13 @@ def install_docker_compose(client):
     if current_version != "":
         print_info("docker-compose 已安装，版本：" + current_version)
         return None
-    stable_version = get_stable_version("https://api.github.com/repos/docker/compose/tags?page=1&per_page=5")
-    print_info("docker-compose 最新稳定版为：" + stable_version)
+    status, info = get_stable_version("https://api.github.com/repos/docker/compose/tags?page=1&per_page=5")
+    if status == 0:
+        stable_version = info
+        print_info("docker-compose最新稳定版本为：" + stable_version)
+    else:
+        print_error(info)
+        return
     if confirm_yes_no("是否安装？", default=False):
         print_info("开始安装docker-compose " + stable_version + "......\n")
 
@@ -135,11 +140,16 @@ def install_docker_compose(client):
 
 def manage_docker(client):
     global current_version, status, stable_version
-    current_version, _, status = run_command(client, r'docker -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-    current_version = current_version.strip() if current_version else ""
-    stable_version = get_stable_version("https://download.docker.com/linux/static/stable/x86_64/")
-    print_info("Docker最新稳定版为：" + stable_version)
+    status, info = get_stable_version("https://download.docker.com/linux/static/stable/x86_64/")
+    if status == 0:
+        stable_version = info
+        print_info("Docker最新稳定版为：" + stable_version)
+    else:
+        print_error(info)
+        return
     while True:
+        current_version, _, status = run_command(client, r'docker -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version = current_version.strip() if current_version else ""
         if current_version == "":
             print("========== docker软件管理 ==========")
             print("1. 安装 docker 最新稳定版")

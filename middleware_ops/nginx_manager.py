@@ -2,16 +2,16 @@ import os
 import json
 import datetime
 from colorama import Fore
-from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version
+from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
 
-def install_nginx(client):
-    print_info("Nginx最新发行版为：" + stable_version)
+def install_nginx(client, version=None):
+
     if confirm_yes_no("是否确定安装？", default=False):
         # 提示输入Nginx安装目录
-        default_install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
+        default_install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入Nginx安装目录 (默认: {default_install_path}): ").strip()
         if not install_path:
             install_path = default_install_path
@@ -24,7 +24,7 @@ def install_nginx(client):
             log_dir = default_log_dir
         print_info("Nginx日志目录: " + log_dir + "\n")
         
-        print_info("开始安装Nginx " + stable_version + "......\n")
+        print_info("开始安装Nginx " + version + "......\n")
 
         print_info("创建nginx用户")
         output, status = run_command_live(client, "getent group nginx || groupadd nginx")
@@ -36,9 +36,9 @@ def install_nginx(client):
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
-        local_path = os.path.join("packages", "nginx-" + stable_version + ".tar.gz")
-        url = "https://nginx.org/download/nginx-" + stable_version + ".tar.gz"
-        remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
+        local_path = os.path.join("packages", "nginx-" + version + ".tar.gz")
+        url = "https://nginx.org/download/nginx-" + version + ".tar.gz"
+        remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
         output, wget_status = run_command_live(client, wget_cmd)
@@ -57,8 +57,8 @@ def install_nginx(client):
                 return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "cd /usr/local/src/nginx-" + stable_version + " && ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
-            "cd /usr/local/src/nginx-" + stable_version + " && make && make install",
+            "cd /usr/local/src/nginx-" + version + " && ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
+            "cd /usr/local/src/nginx-" + version + " && make && make install",
             "ln -fs " + install_path + "/sbin/nginx /usr/bin/nginx",
             "mkdir -p " + install_path + "/conf/conf.d",
         ]
@@ -104,8 +104,8 @@ def install_nginx(client):
 
     return None
 
-def upgrade_nginx(client):
-    print_info("开始升级 Nginx 到最新发行版 " + stable_version + "......\n")
+def upgrade_nginx(client, version=None):
+    print_info("开始升级 Nginx 到最新发行版 " + version + "......\n")
 
     # 先备份当前版本
     print_info("升级前备份当前nginx版本...")
@@ -119,10 +119,10 @@ def upgrade_nginx(client):
         print_success("备份完成，开始升级...")
 
     print_info("开始下载源码包并编译安装")
-    local_path = os.path.join("packages", "nginx-" + stable_version + ".tar.gz")
-    url = "https://nginx.org/download/nginx-" + stable_version + ".tar.gz"
-    remote_path = "/usr/local/src/nginx-" + stable_version + ".tar.gz"
-    install_path = "/usr/local/nginx" + '.'.join(stable_version.split('.')[:2])
+    local_path = os.path.join("packages", "nginx-" + version + ".tar.gz")
+    url = "https://nginx.org/download/nginx-" + version + ".tar.gz"
+    remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
+    install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
 
     wget_cmd = f"cd /usr/local/src && wget {url}"
     output, wget_status = run_command_live(client, wget_cmd)
@@ -142,8 +142,8 @@ def upgrade_nginx(client):
     
     cmds = [
         "tar zxf " + remote_path + " -C /usr/local/src/",
-        "cd /usr/local/src/nginx-" + stable_version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
-        "cd /usr/local/src/nginx-" + stable_version + "&& make && make install",
+        "cd /usr/local/src/nginx-" + version + "&& ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
+        "cd /usr/local/src/nginx-" + version + "&& make && make install",
         "ln -fs " + install_path + "/sbin/nginx /usr/bin/nginx"
     ]
 
@@ -417,16 +417,36 @@ def manage_nginx(client):
     global current_version, status, stable_version
     current_version, _, status = run_command(client, 'nginx -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
-    stable_version = get_stable_version("https://nginx.org/en/download.html", "1.")
-    print_info("Nginx最新稳定版为：" + stable_version)
+    status, info = get_stable_version("https://nginx.org/en/download.html", "1.28.")
+    if status == 0:
+        stable_version = info
+    else:
+        print_error(info)
+        return
+    
+    print_info("Nginx最新stable版本为：" + stable_version)
     while True:
         print("=== Nginx软件管理 ===")
         if status != 0 or not current_version or current_version == "":
-            print("1. 安装 Nginx 最新稳定版")
+            print("1. 安装 Nginx 1.28 最新stable版本")
+            print("2. 安装其他版本的 Nginx（手动指定版本号）")
             print("0. 返回/跳过")
-            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
+            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '0'], default="0")
             if choice == "1":
                 install_nginx(client)
+            elif choice == "2":
+                while True:
+                    input_version = input(Fore.MAGENTA + "请输入要安装的Nginx版本号 (例如 1.28.1): ").strip()
+                    status, version = get_stable_version("https://nginx.org/en/download.html", input_version)
+                    if status == 0:
+                        stable_version = info
+                        break
+                    else:
+                        print_error(info)
+                eol = get_eol_date("nginx", version)
+                if eol != "Unknown":
+                    print_warning(f"注意: {eol}")
+                install_nginx(client, version=input_version)
             elif choice == "0":
                 break
             else:
