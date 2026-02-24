@@ -12,7 +12,8 @@ def parse_host_pattern(pattern, filename="hosts"):
     - Group names: webservers
     - All hosts: all
     """
-    config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",))
+    # Disable interpolation to allow raw '%' in host parameters
+    config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",), interpolation=None)
     config.optionxform = str
     read_files = config.read(filename, encoding="utf-8")
     if not read_files:

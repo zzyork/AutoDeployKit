@@ -1,14 +1,13 @@
-from .mysql_monitor import manage_mysql_monitor
+from .mysql_exporter import manage_mysql_exporter
 from .prometheus_monitor import manage_prometheus
-
-from colorama import Fore, Style
-from utils.output import print_info, print_warning, print_error
+from .node_exporter import manage_node_exporter
 from utils.menu_runner import run_menu
 
 # 注册所有操作：编号 -> (描述, 函数)
 operations = {
     "1": ("安装Prometheus", manage_prometheus),
-    "2": ("安装mysqld监控", manage_mysql_monitor),
+    "2": ("安装mysqld监控", manage_mysql_exporter),
+    "3": ("安装node-exporter监控", manage_node_exporter),
 }
 
 def run(clients):

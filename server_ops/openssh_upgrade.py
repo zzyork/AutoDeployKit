@@ -24,7 +24,7 @@ def upgrade_openssh(client):
         else:
             print_success("备份完成，开始升级...")
 
-        print_info("升级 OpenSSH 到 " + latest_version)
+        print_info("升级 OpenSSH 到 " + stable_version)
 
         print_info("安装telnet及xinetd依赖")
         run_command_live(client, 'dnf -y install xinetd telnet-server')
@@ -105,9 +105,9 @@ def upgrade_openssh(client):
                 openssl_upgraded = 0
 
         print_info("\n开始下载源码包并编译安装")
-        local_path = os.path.join("packages", "openssh-" + latest_version + ".tar.gz")
-        remote_path = "/usr/local/src/openssh-" + latest_version + ".tar.gz"
-        url = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-" + latest_version + ".tar.gz"
+        local_path = os.path.join("packages", "openssh-" + stable_version + ".tar.gz")
+        remote_path = "/usr/local/src/openssh-" + stable_version + ".tar.gz"
+        url = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-" + stable_version + ".tar.gz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
         output, wget_status = run_command_live(client, wget_cmd)
@@ -126,22 +126,22 @@ def upgrade_openssh(client):
                 return None
         
         # 解压并编译安装
-        # 从latest_version中提取版本号（如9.6, 9.9等）
-        version_number = latest_version.split('-')[-1] if '-' in latest_version else latest_version
+        # 从stable_version中提取版本号（如9.6, 9.9等）
+        version_number = stable_version.split('-')[-1] if '-' in stable_version else stable_version
         install_path = f"/usr/local/openssh{version_number}"
-        run_command_live(client, f"cd /usr/local/src && tar xzf openssh-{latest_version}.tar.gz")
+        run_command_live(client, f"cd /usr/local/src && tar xzf openssh-{stable_version}.tar.gz")
 
         if openssl_upgraded == 0:
             cmds = [
-                "cd /usr/local/src/openssh-" + latest_version + "&& ./configure --prefix=" + install_path + " --sysconfdir=/etc/ssh --with-pam --with-zlib --with-md5-passwords --with-pam",
-                "cd /usr/local/src/openssh-" + latest_version + " && make",
-                "cd /usr/local/src/openssh-" + latest_version + " && make install"
+                "cd /usr/local/src/openssh-" + stable_version + "&& ./configure --prefix=" + install_path + " --sysconfdir=/etc/ssh --with-pam --with-zlib --with-md5-passwords --with-pam",
+                "cd /usr/local/src/openssh-" + stable_version + " && make",
+                "cd /usr/local/src/openssh-" + stable_version + " && make install"
             ]
         elif openssl_upgraded == 1:
             cmds = [
-                "cd /usr/local/src/openssh-" + latest_version + " && ./configure --prefix=" + install_path + " --sysconfdir=/etc/ssh --with-openssl-includes=/usr/local/include --with-ssl-dir=" + openssl_path + " --with-zlib --with-md5-passwords --with-pam",
-                "cd /usr/local/src/openssh-" + latest_version + " && make",
-                "cd /usr/local/src/openssh-" + latest_version + " && make install"
+                "cd /usr/local/src/openssh-" + stable_version + " && ./configure --prefix=" + install_path + " --sysconfdir=/etc/ssh --with-openssl-includes=/usr/local/include --with-ssl-dir=" + openssl_path + " --with-zlib --with-md5-passwords --with-pam",
+                "cd /usr/local/src/openssh-" + stable_version + " && make",
+                "cd /usr/local/src/openssh-" + stable_version + " && make install"
             ]
 
         cmd_status = 0
@@ -202,9 +202,9 @@ def upgrade_openssh(client):
 
         # 配置新版本OpenSSH的启动脚本
         cmds = [
-            "cp -a /usr/local/src/openssh-" + latest_version + "/contrib/redhat/sshd.init /etc/init.d/sshd",
+            "cp -a /usr/local/src/openssh-" + stable_version + "/contrib/redhat/sshd.init /etc/init.d/sshd",
             "chmod +x /etc/init.d/sshd",
-            "cp -a /usr/local/src/openssh-" + latest_version + "/contrib/redhat/sshd.pam /etc/pam.d/sshd",
+            "cp -a /usr/local/src/openssh-" + stable_version + "/contrib/redhat/sshd.pam /etc/pam.d/sshd",
             "systemctl daemon-reload",
             "chkconfig --add sshd",
             "chkconfig sshd on"
@@ -583,16 +583,16 @@ def list_openssh_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_openssh(client):
-    global current_version, latest_version
+    global current_version, stable_version
     current_version, _, _ = run_command(client, 'ssh -V 2>&1')
     current_version = current_version.strip() if current_version else ""
     print_success("当前OpenSSH版本：" + current_version)
     try:
-        latest_version = get_stable_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
-        print_info("OpenSSH最新发行版为：" + latest_version)
+        stable_version = get_stable_version("http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/", "9.")
+        print_info("OpenSSH最新发行版为：" + stable_version)
     except:
         print_warning("无法获取最新版本信息")
-        latest_version = "未知"
+        stable_version = "未知"
     while True:
         print("\n=== OpenSSH升级操作 ===")
         
