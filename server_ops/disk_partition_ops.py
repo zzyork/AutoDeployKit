@@ -60,11 +60,15 @@ def create_lvm_and_mount(client, disk):
         return
     
     mount_point = input("请输入挂载点(/data): ").strip()
+    uuid, status = run_command(client, f"blkid -s UUID -o value /dev/{VG_NAME}/{LV_NAME}")
+    if status != 0:
+        print_error("获取 UUID 失败")
+        return
     
     cmds = [
         f"mkdir -p {mount_point}",
-        f"mount /dev/{VG_NAME}/{LV_NAME} {mount_point}",
-        f"echo \"/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0\" >> /etc/fstab"
+        f"mount UUID={uuid.strip()} {mount_point}",
+        f"echo \"UUID={uuid.strip()} {mount_point} xfs defaults 0 0\" >> /etc/fstab"
     ]
 
     for cmd in cmds:
