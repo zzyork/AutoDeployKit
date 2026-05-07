@@ -114,11 +114,31 @@ def ssh_connect(
 def close_ssh_client(client):
     """关闭目标连接及其代理连接（如有）"""
     proxy_client = getattr(client, "_proxy_client", None)
+
+    def _close_one(ssh_client):
+        if not ssh_client:
+            return
+        try:
+            transport = ssh_client.get_transport()
+        except Exception:
+            transport = None
+
+        if transport:
+            try:
+                transport.close()
+            except Exception:
+                pass
+
+        try:
+            ssh_client.close()
+        except Exception:
+            pass
+
     try:
-        client.close()
+        _close_one(client)
     finally:
         if proxy_client:
-            proxy_client.close()
+            _close_one(proxy_client)
 
 
 def run_command(client, command):
