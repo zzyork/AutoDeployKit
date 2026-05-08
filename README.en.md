@@ -1,6 +1,6 @@
 # AutoDeployKit
 
-An automation toolkit for operating multiple Linux servers over SSH. It provides interactive workflows for server initialization, software deployment, monitoring setup, inspection report generation, and Agent-assisted diagnosis.
+An automation toolkit for operating multiple Linux servers over SSH. It provides interactive workflows for server initialization, software deployment, monitoring setup, and inspection report generation.
 
 > The current repository is primarily designed for interactive CLI usage and is intended for RPM-based distributions such as CentOS 7/8/9, Rocky Linux, and OpenEuler.
 
@@ -15,11 +15,6 @@ The following modules can be invoked directly through `cli.py`:
 - `software_ops`: software management
 - `monitor_ops`: monitoring management
 - `server_check`: server inspection
-- `agent_ops`: interactive Agent diagnosis
-
-Additionally provided:
-
-- `agent_cli.py`: launch diagnosis directly with natural language
 
 ---
 
@@ -66,22 +61,11 @@ Currently wired into the menu:
 - Summarize recent error logs
 - Export Markdown inspection reports
 
-### 6. Agent Diagnosis `agent_ops` / `agent_cli.py`
-
-- Accept natural language problem descriptions
-- Detect common issue types automatically
-- Collect evidence such as service status, logs, disk, memory, and ports
-- Output diagnosis findings and suggested actions
-- Ask for confirmation before low-risk repair actions, then verify results
-
----
-
 ## Project Structure
 
 ```text
 .
 ├─ cli.py                      # Main CLI entry
-├─ agent_cli.py                # Agent diagnosis entry
 ├─ hosts.example               # Example hosts inventory
 ├─ requirements.txt            # Python dependencies
 ├─ config/                     # Templates and config files
@@ -93,12 +77,6 @@ Currently wired into the menu:
 │  ├─ prometheus/
 │  └─ supervisor/
 ├─ packages/                   # Local package cache
-├─ agent/                      # Agent diagnosis core
-│  ├─ planner.py               # Intent detection
-│  ├─ runner.py                # Diagnosis orchestration and repair flow
-│  └─ tools.py                 # Evidence collection and repair tools
-├─ agent_ops/
-│  └─ main.py                  # Interactive Agent entry
 ├─ server_ops/
 │  ├─ main.py
 │  ├─ hostname_ops.py
@@ -107,8 +85,7 @@ Currently wired into the menu:
 │  ├─ kernel_optimize_ops.py
 │  ├─ disk_partition_ops.py
 │  ├─ system_optimize_ops.py
-│  ├─ openssl_upgrade.py
-│  └─ openssh_upgrade.py       # Present but not enabled in menu
+│  └─ openssl_upgrade.py
 ├─ middleware_ops/
 │  ├─ main.py
 │  ├─ nginx_manager.py
@@ -152,6 +129,27 @@ Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+---
+
+## Skills Required for AI Agent Maintenance
+
+When maintaining this repository with an AI Agent that supports Skills, enable at least the following Skills:
+
+### Required Skills
+
+- `Code`: for code changes, task planning, implementation, and verification workflows.
+- `brainstorming`: for requirement clarification and design evaluation before adding features, changing behavior, or making design decisions.
+- `git-essentials`: for inspecting changes, commit history, branch state, and following a safe Git workflow.
+
+### Optional Skills
+
+- `security-auditor`: enable when working on SSH, permissions, keys, command execution, input validation, or high-risk operations.
+- `architecture-designer`: enable for module boundaries, workflow refactoring, plugin design, or batch operations architecture changes.
+- `writing-plans` / `executing-plans`: enable when a clear specification exists or a larger change needs to be implemented in stages.
+- `frontend-design` or `ui-ux-pro-max`: enable if a Web UI, visual report, or interactive interface is added later.
+
+The Agent should also follow the project rules in `CLAUDE.md`: read the project instructions first; load `.venv` only when invoking repository modules or workflows; read target SSH configuration from `hosts` before any remote operation; and apply the command policy for read-only, modify/restart, and move/delete/stop/shutdown operations.
 
 ---
 
@@ -209,44 +207,7 @@ python cli.py middleware_ops webservers
 python cli.py software_ops webservers
 python cli.py monitor_ops dbservers
 python cli.py server_check webservers
-python cli.py agent_ops webservers
 ```
-
-### 2. Agent Natural Language Diagnosis
-
-```bash
-python agent_cli.py webservers "nginx 502, help me locate the issue"
-python agent_cli.py 192.168.1.10 "mysql service won't start, please check"
-```
-
----
-
-## Agent Diagnosis Coverage
-
-Current built-in intent categories include:
-
-- `nginx 502`
-- service issues
-- disk full / low disk space
-- high CPU / load
-- SSH login or connection issues
-- generic health checks
-
-Typical evidence collection includes:
-
-- `systemctl is-active/status`
-- `journalctl -u <service>`
-- `tail /var/log/nginx/error.log`
-- `df -hT`
-- `free -m`
-- `ss -lntp`
-- `journalctl -p err..alert`
-
-Automatic repair is intentionally limited to low-risk actions, for example:
-
-- asking whether to restart a service when it is not in the `active` state
-
-High-risk changes are not executed automatically by default.
 
 ---
 

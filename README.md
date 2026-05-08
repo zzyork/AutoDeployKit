@@ -1,6 +1,6 @@
 # AutoDeployKit
 
-一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装、巡检报告以及 Agent 辅助诊断能力。
+一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装和巡检报告能力。
 
 > 当前仓库以交互式命令行为主，适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版。
 
@@ -15,11 +15,6 @@
 - `software_ops`：软件管理
 - `monitor_ops`：监控管理
 - `server_check`：服务器巡检
-- `agent_ops`：交互式 Agent 诊断
-
-另外还提供：
-
-- `agent_cli.py`：直接用自然语言发起诊断
 
 ---
 
@@ -66,22 +61,11 @@
 - 汇总近期错误日志
 - 输出 Markdown 巡检报告
 
-### 6. Agent 诊断 `agent_ops` / `agent_cli.py`
-
-- 支持自然语言问题输入
-- 自动识别常见问题类型
-- 自动采集服务状态、日志、磁盘、内存、端口等证据
-- 输出诊断结论与建议动作
-- 对低风险修复动作先确认、再执行验证
-
----
-
 ## 项目结构
 
 ```text
 .
 ├─ cli.py                      # 主 CLI 入口
-├─ agent_cli.py                # Agent 诊断入口
 ├─ hosts.example               # 主机清单示例
 ├─ requirements.txt            # Python 依赖
 ├─ config/                     # 服务模板与配置文件
@@ -93,12 +77,6 @@
 │  ├─ prometheus/
 │  └─ supervisor/
 ├─ packages/                   # 本地缓存的软件包
-├─ agent/                      # Agent 诊断核心逻辑
-│  ├─ planner.py               # 问题意图识别
-│  ├─ runner.py                # 诊断编排与修复执行
-│  └─ tools.py                 # 证据采集与修复工具
-├─ agent_ops/
-│  └─ main.py                  # 交互式 Agent 菜单入口
 ├─ server_ops/
 │  ├─ main.py
 │  ├─ hostname_ops.py
@@ -107,8 +85,7 @@
 │  ├─ kernel_optimize_ops.py
 │  ├─ disk_partition_ops.py
 │  ├─ system_optimize_ops.py
-│  ├─ openssl_upgrade.py
-│  └─ openssh_upgrade.py       # 目前未在菜单中启用
+│  └─ openssl_upgrade.py
 ├─ middleware_ops/
 │  ├─ main.py
 │  ├─ nginx_manager.py
@@ -152,6 +129,27 @@
 ```bash
 pip install -r requirements.txt
 ```
+
+---
+
+## 使用 AI Agent 维护本仓库所需 Skills
+
+如果使用支持 Skills 的 AI Agent 辅助维护本仓库，建议至少启用以下 Skills：
+
+### 必需 Skills
+
+- `Code`：用于代码修改、计划拆解、实现与验证流程。
+- `brainstorming`：用于新增功能、调整行为或设计方案前的需求澄清与方案评估。
+- `git-essentials`：用于查看变更、提交记录、分支状态以及执行规范化 Git 工作流。
+
+### 按需启用 Skills
+
+- `security-auditor`：涉及 SSH、权限、密钥、命令执行、输入校验或高风险运维操作时启用。
+- `architecture-designer`：涉及模块边界、流程重构、插件化或批量运维架构调整时启用。
+- `writing-plans` / `executing-plans`：有明确规格或需要分阶段实施较大改动时启用。
+- `frontend-design` 或 `ui-ux-pro-max`：如果后续新增 Web UI、可视化报告或交互界面时启用。
+
+Agent 使用本仓库时还应遵守 `CLAUDE.md` 中的项目规则：先读取项目指令；只有在调用本仓库模块或流程时才加载 `.venv`；所有远程 SSH 操作必须先从 `hosts` 读取目标主机配置，并按查看、修改/重启、移动/删除/停止/关闭三类命令规则执行。
 
 ---
 
@@ -209,44 +207,7 @@ python cli.py middleware_ops webservers
 python cli.py software_ops webservers
 python cli.py monitor_ops dbservers
 python cli.py server_check webservers
-python cli.py agent_ops webservers
 ```
-
-### 2. Agent 自然语言诊断
-
-```bash
-python agent_cli.py webservers "nginx 502，帮我定位一下"
-python agent_cli.py 192.168.1.10 "mysql 服务起不来，帮我看下"
-```
-
----
-
-## Agent 当前支持的诊断方向
-
-当前已内置的主要识别类型：
-
-- `nginx 502`
-- 服务异常
-- 磁盘空间不足
-- CPU / 负载过高
-- SSH 登录或连接异常
-- 通用健康检查
-
-典型采集内容包括：
-
-- `systemctl is-active/status`
-- `journalctl -u <service>`
-- `tail /var/log/nginx/error.log`
-- `df -hT`
-- `free -m`
-- `ss -lntp`
-- `journalctl -p err..alert`
-
-当前自动修复能力只覆盖低风险场景，例如：
-
-- 服务不在 `active` 状态时，询问是否执行重启
-
-高风险操作默认不会自动执行。
 
 ---
 
