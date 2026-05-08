@@ -7,6 +7,62 @@ from utils.file_utils import upload_file_with_vars
 from utils.choice import confirm_yes_no, menu_choice
 
 REPO_DIR_CANDIDATES = ["/etc/dnf.repos.d", "/etc/yum.repos.d"]
+REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+REPO_URL_RE = re.compile(r"^(https?|ftp|file)://[^\s]+$|^[A-Za-z0-9_./:-]+$")
+
+
+def is_valid_repo_name(repo_name):
+    return bool(REPO_NAME_RE.fullmatch(repo_name)) and ".." not in repo_name
+
+
+def is_valid_repo_value(value):
+    return "\n" not in value and "\r" not in value and bool(REPO_URL_RE.fullmatch(value))
+
+
+def upload_text(client, remote_path, content):
+    with client.open_sftp() as sftp:
+        with sftp.file(remote_path, "w") as remote_file:
+            remote_file.write(content)
+
+
+def remove_remote_file(client, remote_path):
+    with client.open_sftp() as sftp:
+        sftp.remove(remote_path)
+
+
+def replace_repo_url(content, new_url):
+    lines = content.splitlines()
+    replaced = False
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+        if stripped.startswith("baseurl="):
+            lines[idx] = f"{indent}baseurl={new_url}"
+            replaced = True
+        elif stripped.startswith("mirrorlist="):
+            lines[idx] = f"{indent}mirrorlist={new_url}"
+            replaced = True
+    return "\n".join(lines) + ("\n" if content.endswith("\n") else ""), replaced
+
+
+def remove_repo_section(content, repo_name):
+    output_lines = []
+    in_target = False
+    removed = False
+
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section_name = stripped[1:-1]
+            in_target = section_name == repo_name
+            if in_target:
+                removed = True
+                continue
+
+        if not in_target:
+            output_lines.append(line)
+
+    return "\n".join(line for line in output_lines if line.strip()) + "\n", removed
 
 
 def get_repo_dir(client):
@@ -136,18 +192,25 @@ def modify_dnf_repo_url(client, repo_name, repos):
     if not new_url:
         print_warning("URL 为空，取消修改。")
         return
+    if not is_valid_repo_value(new_url):
+        print_error("URL 格式非法：不允许空白、换行或不受支持的协议")
+        return
 
-    quoted_file = shlex.quote(filepath)
-    new_url_esc = new_url.replace("&", "\\&")
-    sed_baseurl_cmd = f"sed -i 's|^baseurl=.*|baseurl={new_url_esc}|' {quoted_file}"
-    _, err, _ = run_command(client, sed_baseurl_cmd)
-    if err:
-        print_warning(f"替换 baseurl 失败，尝试替换 mirrorlist: {err}")
-        sed_mirror_cmd = f"sed -i 's|^mirrorlist=.*|mirrorlist={new_url_esc}|' {quoted_file}"
-        _, err2, _ = run_command(client, sed_mirror_cmd)
-        if err2:
-            print_error(f"替换 mirrorlist 失败: {err2}")
-            return
+    content, err, status = run_command(client, f"cat {shlex.quote(filepath)}")
+    if status != 0:
+        print_error(f"读取 {filepath} 失败: {err}")
+        return
+
+    new_content, replaced = replace_repo_url(content, new_url)
+    if not replaced:
+        print_error("未找到 baseurl 或 mirrorlist 配置，取消修改")
+        return
+
+    try:
+        upload_text(client, filepath, new_content)
+    except Exception as exc:
+        print_error(f"写入 {filepath} 失败: {exc}")
+        return
 
     print_success(f"{repo_name} 的 URL 已更新为: {new_url}")
 
@@ -159,23 +222,38 @@ def add_dnf_repo(client):
     if not repo_name:
         print_warning("dnf源名称不能为空")
         return
+    if not is_valid_repo_name(repo_name):
+        print_error("dnf源名称非法：仅允许字母、数字、下划线、点和短横线，且不能包含 '..'")
+        return
     
     repo_url = input(Fore.MAGENTA + "请输入dnf源URL: " + Fore.RESET).strip()
     if not repo_url:
         print_warning("dnf源URL不能为空")
         return
+    if not is_valid_repo_value(repo_url):
+        print_error("dnf源URL非法：不允许空白、换行或不受支持的协议")
+        return
     
     enabled = input(Fore.MAGENTA + "是否启用此dnf源? (1/0) [默认1]: " + Fore.RESET).strip()
     if not enabled:
         enabled = "1"
+    if enabled not in {"0", "1"}:
+        print_error("enabled 只能为 0 或 1")
+        return
     
     gpgcheck = input(Fore.MAGENTA + "是否启用GPG检查? (1/0) [默认0]: " + Fore.RESET).strip()
     if not gpgcheck:
         gpgcheck = "0"
+    if gpgcheck not in {"0", "1"}:
+        print_error("gpgcheck 只能为 0 或 1")
+        return
     
     gpgkey = input(Fore.MAGENTA + "请输入GPG密钥URL (可选): " + Fore.RESET).strip()
     if not gpgkey:
         gpgkey = ""
+    elif not is_valid_repo_value(gpgkey):
+        print_error("GPG密钥URL非法：不允许空白、换行或不受支持的协议")
+        return
     
     # 准备变量
     variables = {
@@ -237,9 +315,10 @@ def delete_dnf_repo(client):
                 if len(repos_in_file) == 1:
                     # 文件中只有一个源，直接删除整个文件
                     if backup_dnf_repo(client, filepath):
-                        _, err, _ = run_command(client, f"rm -f {shlex.quote(filepath)}")
-                        if err:
-                            print_error(f"删除文件 {filepath} 失败: {err}")
+                        try:
+                            remove_remote_file(client, filepath)
+                        except Exception as exc:
+                            print_error(f"删除文件 {filepath} 失败: {exc}")
                             return
                         print_success(f"dnf源 '{selected_repo}' 及其配置文件已删除")
                     else:
@@ -248,16 +327,21 @@ def delete_dnf_repo(client):
                 else:
                     # 文件中有多个源，只删除指定源
                     if backup_dnf_repo(client, filepath):
-                        # 使用sed删除指定的源配置段
-                        selected_repo_esc = re.escape(selected_repo)
-                        sed_cmd = f"sed -i '/\\[{selected_repo_esc}\\]/,/\\[/{{/\\[/{{d;}};d;}}' {shlex.quote(filepath)}"
-                        _, err, _ = run_command(client, sed_cmd)
-                        if err:
-                            print_error(f"从文件中删除源配置失败: {err}")
+                        content, err, status = run_command(client, f"cat {shlex.quote(filepath)}")
+                        if status != 0:
+                            print_error(f"读取 {filepath} 失败: {err}")
                             return
-                        
-                        # 清理空行
-                        run_command(client, f"sed -i '/^$/d' {shlex.quote(filepath)}")
+
+                        new_content, removed = remove_repo_section(content, selected_repo)
+                        if not removed:
+                            print_error(f"未找到源配置段 {selected_repo}，取消删除")
+                            return
+
+                        try:
+                            upload_text(client, filepath, new_content)
+                        except Exception as exc:
+                            print_error(f"写入 {filepath} 失败: {exc}")
+                            return
                         print_success(f"dnf源 '{selected_repo}' 已从文件 {filepath} 中删除")
                     else:
                         print_warning("备份失败，取消删除操作")

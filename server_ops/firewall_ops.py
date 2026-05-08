@@ -1,9 +1,31 @@
+import re
+import shlex
 from pathlib import Path
 
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.choice import confirm_yes_no
 from utils.menu_runner import run_menu
+
+
+SERVICE_RE = re.compile(r"^[A-Za-z0-9_.+-]+$")
+
+
+def is_valid_service_name(service):
+    return bool(SERVICE_RE.fullmatch(service))
+
+
+def is_valid_port_rule(rule):
+    if "/" not in rule:
+        return False
+    port_part, proto = rule.split("/", 1)
+    if proto not in {"tcp", "udp"}:
+        return False
+    bounds = port_part.split("-", 1)
+    if not all(part.isdigit() for part in bounds):
+        return False
+    nums = [int(part) for part in bounds]
+    return all(1 <= num <= 65535 for num in nums) and (len(nums) == 1 or nums[0] <= nums[1])
 
 
 def manage_firewalld(client):
@@ -114,7 +136,10 @@ def add_rules(client):
                     rule = candidates[choice_idx - 1]
 
     if rule in services_list:
-        _ , status = run_command_live(client, f"firewall-cmd --permanent --add-service={rule}")
+        if not is_valid_service_name(rule):
+            print_error("服务名格式非法，取消操作")
+            return None
+        _ , status = run_command_live(client, f"firewall-cmd --permanent --add-service={shlex.quote(rule)}")
         if status == 0:
             print_success(f"服务 {rule} 已成功添加到防火墙")
         else:
@@ -148,7 +173,11 @@ def add_rules(client):
                 return None
             rule = f"{port_part}/{proto}"
 
-        _ , status = run_command_live(client, f"firewall-cmd --permanent --add-port={rule}")
+        if not is_valid_port_rule(rule):
+            print_error("端口规则非法，端口范围必须在 1-65535 内")
+            return None
+
+        _ , status = run_command_live(client, f"firewall-cmd --permanent --add-port={shlex.quote(rule)}")
         if status == 0:
             print_success(f"端口 {rule} 已成功添加到防火墙")
         else:
@@ -190,7 +219,10 @@ def delete_rules(client):
                     rule = candidates[choice_idx - 1]
 
     if rule in services_list:
-        _ , status = run_command_live(client, f"firewall-cmd --permanent --remove-service={rule}")
+        if not is_valid_service_name(rule):
+            print_error("服务名格式非法，取消操作")
+            return None
+        _ , status = run_command_live(client, f"firewall-cmd --permanent --remove-service={shlex.quote(rule)}")
         if status == 0:
             print_success(f"服务 {rule} 已成功从防火墙删除")
         else:
@@ -210,7 +242,10 @@ def delete_rules(client):
 
         if port_matches:
             for p in port_matches:
-                _ , status = run_command_live(client, f"firewall-cmd --permanent --remove-port={p}")
+                if not is_valid_port_rule(p):
+                    print_error(f"端口规则 {p} 非法，取消操作")
+                    return None
+                _ , status = run_command_live(client, f"firewall-cmd --permanent --remove-port={shlex.quote(p)}")
                 if status == 0:
                     print_success(f"端口 {rule} 已成功从防火墙删除")
                 else:

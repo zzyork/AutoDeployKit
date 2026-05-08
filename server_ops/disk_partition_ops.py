@@ -18,7 +18,13 @@ def get_partition_path(disk, partition_number=1):
 
 
 def validate_mount_point(mount_point):
-    return mount_point.startswith("/") and not re.search(r"\s", mount_point)
+    return mount_point.startswith("/") and ".." not in mount_point and not re.search(r"\s", mount_point)
+
+
+def lvm_name_exists(client):
+    vg_out, _, _ = run_command(client, f"vgs --noheadings -o vg_name {shlex.quote(VG_NAME)} 2>/dev/null || true")
+    lv_out, _, _ = run_command(client, f"lvs --noheadings -o lv_name {shlex.quote(VG_NAME)}/{shlex.quote(LV_NAME)} 2>/dev/null || true")
+    return bool(vg_out.strip() or lv_out.strip())
 
 
 def is_disk_in_use(client, disk_path):
@@ -62,7 +68,7 @@ def list_unmounted_disks(client):
             continue
 
         # 检查是否有分区存在
-        check_part_cmd = f"lsblk -nr {shlex.quote(full_path)} -o NAME | grep -v '^{disk}$'"
+        check_part_cmd = f"lsblk -nr {shlex.quote(full_path)} -o NAME | grep -Fxv {shlex.quote(disk)}"
         part_output, _, _ = run_command(client, check_part_cmd)
 
         if not part_output.strip():
@@ -74,6 +80,13 @@ def list_unmounted_disks(client):
 def create_lvm_and_mount(client, disk):
     print_info(f"开始在 {disk} 上创建 LVM")
     partition = get_partition_path(disk)
+
+    if is_disk_in_use(client, disk):
+        print_error(f"磁盘 {disk} 已检测到占用签名，取消操作")
+        return
+    if lvm_name_exists(client):
+        print_error(f"LVM 名称 /dev/{VG_NAME}/{LV_NAME} 已存在，取消操作以避免覆盖")
+        return
 
     cmds = [
         f"parted -s {shlex.quote(disk)} mklabel gpt",
@@ -117,6 +130,11 @@ def create_lvm_and_mount(client, disk):
 
     if confirm_yes_no("是否开机自动挂载？", default=False):
         fstab_line = f"UUID={uuid.strip()} {mount_point} xfs defaults 0 0"
+        exists, _, _ = run_command(client, f"grep -F {shlex.quote('UUID=' + uuid.strip())} /etc/fstab >/dev/null 2>&1 && echo YES || echo NO")
+        if exists.strip() == "YES":
+            print_warning("/etc/fstab 中已存在该 UUID，跳过重复写入")
+            print_success(f"{disk} 已完成 LVM 创建并挂载到 {mount_point}")
+            return
         _, status = run_command_live(client, f"echo {shlex.quote(fstab_line)} >> /etc/fstab")
         if status != 0:
             print_error("写入 /etc/fstab 失败")
