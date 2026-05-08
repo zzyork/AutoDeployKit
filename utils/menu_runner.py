@@ -11,7 +11,11 @@ def run_menu(title: str, operations: dict, clients: list):
             print(f"{key}. {desc}")
         print("0. 退出")
 
-        choice = input(Fore.MAGENTA + "请输入操作编号: ").strip()
+        try:
+            choice = input(Fore.MAGENTA + "请输入操作编号: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print_info(f"输入中断，退出{title}。")
+            break
 
         if choice == "0":
             print_info(f"退出{title}。")

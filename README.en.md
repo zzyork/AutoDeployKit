@@ -1,80 +1,151 @@
 # AutoDeployKit
 
-An automation toolkit for operating and deploying across multiple Linux servers via SSH. It streamlines common tasks such as server initialization, software install/upgrade, monitoring setup, and server inspection. Features are organized by modules and executed in batch via `cli.py` by specifying a module and a host group.
+An automation toolkit for operating multiple Linux servers over SSH. It provides interactive workflows for server initialization, software deployment, monitoring setup, inspection report generation, and Agent-assisted diagnosis.
+
+> The current repository is primarily designed for interactive CLI usage and is intended for RPM-based distributions such as CentOS 7/8/9, Rocky Linux, and OpenEuler.
 
 ---
 
-## Features
+## Currently Available Modules
 
-- Server initialization
-  - Set hostname
-  - Manage Yum repositories and packages
-  - Manage firewalld and SELinux
-  - Kernel parameters and system optimization
-  - Bare disk partitioning, LVM creation, and mounting to a target directory
-  - OpenSSL security upgrade
-- Software management
-  - Nginx: build from source, upgrade, and manage via systemd
-  - Docker: install static binaries and manage via systemd
-- Monitoring setup
-  - mysqld_exporter install and credential injection
-  - Prometheus install and systemd setup
-- Server inspection
-  - Collect system info, resource usage, service status, network/ports, and error logs
-  - Export reports to Markdown with per-group and monthly archival
-- SSH batch execution
-  - Password and key-based authentication
-  - Bastion/Jump host support
-  - Live streaming of remote command output
+The following modules can be invoked directly through `cli.py`:
+
+- `server_ops`: server initialization
+- `middleware_ops`: middleware management
+- `software_ops`: software management
+- `monitor_ops`: monitoring management
+- `server_check`: server inspection
+- `agent_ops`: interactive Agent diagnosis
+
+Additionally provided:
+
+- `agent_cli.py`: launch diagnosis directly with natural language
 
 ---
 
-## Directory Structure
+## Feature Overview
 
-```
+### 1. Server Initialization `server_ops`
+
+- Set hostname
+- Manage packages
+- Configure firewalld / SELinux
+- Tune kernel parameters
+- Partition and mount disks
+- Apply system optimization
+- Manage OpenSSL
+
+### 2. Middleware Management `middleware_ops`
+
+Currently wired into the menu:
+
+- Nginx management
+- MySQL management
+
+> Although `redis_manager.py` and `rabbitmq_manager.py` exist in the repository, they are not registered in `middleware_ops/main.py`, so they are not currently available from the CLI menu.
+
+### 3. Software Management `software_ops`
+
+- Docker management
+- Minio management
+- Supervisor management
+
+### 4. Monitoring Management `monitor_ops`
+
+- Prometheus installation
+- mysqld_exporter installation
+- node_exporter installation
+
+### 5. Server Inspection `server_check`
+
+- Collect basic system information
+- Collect resource usage
+- Check security settings
+- Check service and process status
+- Check network and listening ports
+- Summarize recent error logs
+- Export Markdown inspection reports
+
+### 6. Agent Diagnosis `agent_ops` / `agent_cli.py`
+
+- Accept natural language problem descriptions
+- Detect common issue types automatically
+- Collect evidence such as service status, logs, disk, memory, and ports
+- Output diagnosis findings and suggested actions
+- Ask for confirmation before low-risk repair actions, then verify results
+
+---
+
+## Project Structure
+
+```text
 .
-├─ cli.py                   # CLI entry: select module and load host group
-├─ requirements.txt         # Dependencies
-├─ config/                  # systemd and service template files
-├─ scripts/                 # Helper scripts
-├─ server_ops/              # Server initialization operations
-│  ├─ main.py               # Menu entry
-│  ├─ hostname_ops.py       # Hostname management
-│  ├─ dnf_repos_ops.py      # Yum repositories
-│  ├─ pkg_ops.py            # Packages
-│  ├─ firewall_selinux_ops.py# firewalld / SELinux
-│  ├─ kernel_optimize_ops.py# Kernel tuning
-│  ├─ disk_partition_ops.py # Bare disk + LVM + mount
-│  ├─ system_optimize_ops.py# System optimization
-│  └─ openssl_upgrade.py    # OpenSSL upgrade
-├─ middleware_ops/            # Middleware management (Nginx, MySQL)
+├─ cli.py                      # Main CLI entry
+├─ agent_cli.py                # Agent diagnosis entry
+├─ hosts.example               # Example hosts inventory
+├─ requirements.txt            # Python dependencies
+├─ config/                     # Templates and config files
+│  ├─ docker/
+│  ├─ linux/
+│  ├─ minio/
+│  ├─ mysql/
+│  ├─ nginx/
+│  ├─ prometheus/
+│  └─ supervisor/
+├─ packages/                   # Local package cache
+├─ agent/                      # Agent diagnosis core
+│  ├─ planner.py               # Intent detection
+│  ├─ runner.py                # Diagnosis orchestration and repair flow
+│  └─ tools.py                 # Evidence collection and repair tools
+├─ agent_ops/
+│  └─ main.py                  # Interactive Agent entry
+├─ server_ops/
+│  ├─ main.py
+│  ├─ hostname_ops.py
+│  ├─ pkg_ops.py
+│  ├─ firewall_ops.py
+│  ├─ kernel_optimize_ops.py
+│  ├─ disk_partition_ops.py
+│  ├─ system_optimize_ops.py
+│  ├─ openssl_upgrade.py
+│  └─ openssh_upgrade.py       # Present but not enabled in menu
+├─ middleware_ops/
 │  ├─ main.py
 │  ├─ nginx_manager.py
-│  └─ docker_manager.py
-├─ monitor_ops/             # Monitoring setup (mysqld_exporter, Prometheus)
+│  ├─ mysql_manager.py
+│  ├─ redis_manager.py         # Present but not enabled in menu
+│  └─ rabbitmq_manager.py      # Present but not enabled in menu
+├─ software_ops/
 │  ├─ main.py
-│  ├─ mysql_monitor.py
-│  └─ prometheus_monitor.py
-├─ server_check/            # Server inspection and report generation
+│  ├─ docker_manager.py
+│  ├─ minio_manager.py
+│  └─ supervisor_manager.py
+├─ monitor_ops/
+│  ├─ main.py
+│  ├─ prometheus_monitor.py
+│  ├─ mysql_exporter.py
+│  └─ node_exporter.py
+├─ server_check/
 │  └─ main.py
-├─ server_check_reports/    # Output directory for inspection reports
-└─ utils/                   # Utilities
-   ├─ ssh_utils.py          # SSH connection & commands (with proxy support)
-   ├─ file_utils.py         # Download/upload, template render, GitHub version fetch, MD5 utilities
-   ├─ output.py             # Colored console and local logfile
-   └─ server_utils.py       # Server helper utilities
+├─ scripts/
+│  └─ get-pip.py
+└─ utils/
+   ├─ ssh_utils.py
+   ├─ file_utils.py
+   ├─ output.py
+   ├─ menu_runner.py
+   ├─ choice.py
+   └─ server_utils.py
 ```
 
 ---
 
 ## Requirements
 
-- Python 3.9+ (recommended)
-- Internet access (for downloading artifacts and GitHub API)
-- Target servers
-  - Linux (CentOS/Rocky/Alma or other RHEL-like distros)
-  - sudo/root privileges
-  - Reachable via SSH; provide bastion settings if needed
+- Python 3.9+
+- SSH access to target hosts
+- root or sudo privileges on target hosts
+- RHEL-family distributions are recommended
 
 Install dependencies:
 
@@ -84,93 +155,121 @@ pip install -r requirements.txt
 
 ---
 
-## Hosts Inventory (hosts)
+## Hosts Inventory
 
-`cli.py` reads a `hosts` file (INI-like format) from the current working directory. Example:
+The program reads a `hosts` file from the current directory. See `hosts.example` for the expected format.
 
-```
+Example:
+
+```ini
 [webservers]
 192.168.1.10 user=root password=passw0rd port=22
 192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
 
 [dbservers]
-10.0.0.5 user=root keyfile="/path/to/key" proxy=10.0.0.2 proxy_user=jump proxy_password=*** proxy_port=22
+10.0.0.5 user=root keyfile="/path/to/key" port=22
+10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
 ```
 
 Supported fields:
-- user, port, password, keyfile (maps to internal `key_file`)
-- vip (virtual IP for connection, if present)
-- proxy, proxy_user, proxy_password, proxy_keyfile, proxy_port
+
+- `user`
+- `port`
+- `password`
+- `keyfile`
+- `vip`
+- `proxy`
+- `proxy_user`
+- `proxy_password`
+- `proxy_keyfile`
+- `proxy_port`
 
 ---
 
 ## Usage
 
-General invocation:
+### 1. General CLI
 
 ```bash
-python cli.py <module_name> <group>
+python cli.py <module_name> <host_pattern>
 ```
 
-- `<module_name>` options:
-  - `server_ops` Server initialization
-  - `middleware_ops` Software management (Nginx, Docker)
-  - `monitor_ops` Monitoring setup (mysqld_exporter, Prometheus)
-  - `server_check` Server inspection (Markdown report)
-- `<group>`: group name from the hosts file, e.g., `webservers`
+`<host_pattern>` supports:
+
+- a host group, for example `webservers`
+- a single IP, for example `192.168.1.10`
+- multiple IPs, for example `192.168.1.10,192.168.1.11`
+- all hosts: `all`
 
 Examples:
 
 ```bash
-# Server initialization (interactive menu)
 python cli.py server_ops webservers
-
-# Software management (Nginx, Docker)
 python cli.py middleware_ops webservers
-
-# Monitoring setup (mysqld_exporter, Prometheus)
+python cli.py software_ops webservers
 python cli.py monitor_ops dbservers
-
-# Server inspection (reports to server_check_reports/<group>/<YYYYMM>/)
 python cli.py server_check webservers
+python cli.py agent_ops webservers
+```
+
+### 2. Agent Natural Language Diagnosis
+
+```bash
+python agent_cli.py webservers "nginx 502, help me locate the issue"
+python agent_cli.py 192.168.1.10 "mysql service won't start, please check"
 ```
 
 ---
 
-## Module Overview
+## Agent Diagnosis Coverage
 
-- server_ops
-  - Hostname, Yum repos, packages, firewalld & SELinux, kernel & system tuning
-  - Disk partitioning & mounting: detect bare disks, create GPT + LVM, format XFS, mount to `/data`
-  - OpenSSL upgrade for security hardening
-- middleware_ops
-  - Nginx: fetch stable version, build from source, template `nginx.conf`, systemd service
-  - Docker: install official static binaries, systemd service
-- monitor_ops
-  - mysqld_exporter: fetch latest from GitHub, upload and install, interactive DB credentials, systemd service
-  - Prometheus: fetch latest from GitHub, upload and install, create data dir, systemd service
-- server_check
-  - Collect OS info, resource metrics, service status, networking/ports, and error logs to Markdown
+Current built-in intent categories include:
+
+- `nginx 502`
+- service issues
+- disk full / low disk space
+- high CPU / load
+- SSH login or connection issues
+- generic health checks
+
+Typical evidence collection includes:
+
+- `systemctl is-active/status`
+- `journalctl -u <service>`
+- `tail /var/log/nginx/error.log`
+- `df -hT`
+- `free -m`
+- `ss -lntp`
+- `journalctl -p err..alert`
+
+Automatic repair is intentionally limited to low-risk actions, for example:
+
+- asking whether to restart a service when it is not in the `active` state
+
+High-risk changes are not executed automatically by default.
 
 ---
 
-## Notes & Best Practices
+## Inspection Report Notes
 
-- Run commands with root or sudo privileges; some tasks require elevated permissions
-- Disk partitioning/LVM will alter disk data; verify selected disk and confirm prompts
-- For offline environments, pre-download artifacts into `packages/` for upload
-- Bastion: provide `proxy` parameters to connect through a jump host
-- For multiple hosts, operations run sequentially; failures on one host do not block others
+When running `server_check`, the program prompts for a report output directory.
+
+- Default directory: `server_check/reports`
+- Output layout: `group / month / host_report.md`
+
+Concurrency is controlled by the `MAX_WORKERS` environment variable. Set it before running inspection, for example: `MAX_WORKERS=5`.
 
 ---
 
-## Contributing
+## Notes
 
-- Issues and PRs are welcome
-- Keep the modular and interactive design style
+- Disk partitioning, formatting, and mounting are destructive operations; verify the target disk carefully
+- If target machines cannot access the internet directly, place installation packages in `packages/` for upload fallback
+- During multi-host execution, failed connections are skipped and do not block other hosts
+- For bastion/jump host scenarios, make sure `proxy*` parameters are configured correctly
 
 ---
 
 ## License
 
-MIT License. See `LICENSE` for details.
+This project is licensed under the MIT License. See `LICENSE` for details.

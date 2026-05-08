@@ -1,95 +1,151 @@
 # AutoDeployKit
 
-一个面向多台服务器的自动化运维与部署工具，支持通过 SSH 一键执行服务器初始化、软件安装/升级、监控安装与服务器巡检等常见任务。以分模块的方式组织功能，通过 `cli.py` 指定模块与主机组，批量连接并交互式执行操作。
+一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装、巡检报告以及 Agent 辅助诊断能力。
 
-
-！！！本工具仅适用于，CentOS 7、CentOS 8、CentOS 9、OpenEuler、RockyLinux 等基于 RPM 的 Linux 发行版
----
-
-## 功能特性
-
-- 服务器初始化
-  - 设置主机名
-  - 管理软件包安装
-  - 防火墙 firewalld 配置、SELinux 管理
-  - 内核参数调优
-  - 磁盘分区与挂载
-  - 系统优化
-  - OpenSSL 安全升级
-- 中间件管理
-  - Nginx 源码安装、升级与 systemd 管理
-  - MySQL 管理
-- 软件管理
-  - Docker 二进制安装与 systemd 管理
-  - Minio 管理
-  - Supervisor 管理
-- 监控部署
-  - Prometheus 二进制安装与 systemd 管理
-  - mysqld_exporter 安装与凭据配置
-- 服务器巡检
-  - 采集系统基础信息、资源使用、安全配置、服务状态、网络与端口、日志错误等
-  - 以 Markdown 报告落盘归档（按主机组与月份归档）
-- SSH 批量执行
-  - 支持密码与密钥登录
-  - 支持跳板机/代理连接
-  - 实时输出远程命令执行过程
+> 当前仓库以交互式命令行为主，适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版。
 
 ---
 
-## 目录结构
+## 当前可用模块
 
-```
+本项目当前通过 `cli.py` 可直接调用的模块如下：
+
+- `server_ops`：服务器初始化
+- `middleware_ops`：中间件管理
+- `software_ops`：软件管理
+- `monitor_ops`：监控管理
+- `server_check`：服务器巡检
+- `agent_ops`：交互式 Agent 诊断
+
+另外还提供：
+
+- `agent_cli.py`：直接用自然语言发起诊断
+
+---
+
+## 功能概览
+
+### 1. 服务器初始化 `server_ops`
+
+- 设置主机名
+- 管理软件包
+- 配置 firewalld / SELinux
+- 内核参数调优
+- 磁盘分区与挂载
+- 系统优化
+- OpenSSL 管理
+
+### 2. 中间件管理 `middleware_ops`
+
+当前菜单中已接入：
+
+- Nginx 管理
+- MySQL 管理
+
+> 仓库中虽然存在 `redis_manager.py`、`rabbitmq_manager.py`，但当前 `middleware_ops/main.py` 未注册这两个入口，因此不属于当前 CLI 可直接使用的模块。
+
+### 3. 软件管理 `software_ops`
+
+- Docker 管理
+- Minio 管理
+- Supervisor 管理
+
+### 4. 监控管理 `monitor_ops`
+
+- Prometheus 安装
+- mysqld_exporter 安装
+- node_exporter 安装
+
+### 5. 服务器巡检 `server_check`
+
+- 采集系统基础信息
+- 采集资源使用情况
+- 检查安全配置
+- 检查服务与进程状态
+- 检查网络与监听端口
+- 汇总近期错误日志
+- 输出 Markdown 巡检报告
+
+### 6. Agent 诊断 `agent_ops` / `agent_cli.py`
+
+- 支持自然语言问题输入
+- 自动识别常见问题类型
+- 自动采集服务状态、日志、磁盘、内存、端口等证据
+- 输出诊断结论与建议动作
+- 对低风险修复动作先确认、再执行验证
+
+---
+
+## 项目结构
+
+```text
 .
-├─ cli.py                   # 命令行入口：选择模块并加载主机组
-├─ requirements.txt         # 依赖
-├─ config/                  # systemd 与服务模板配置
-├─ scripts/                 # 辅助脚本
-├─ server_ops/              # 服务器初始化相关操作
-│  ├─ main.py               # 菜单入口
-│  ├─ hostname_ops.py       # 主机名管理
-│  ├─ dnf_repos_ops.py      # Yum 源
-│  ├─ pkg_ops.py            # 软件包
-│  ├─ firewall_selinux_ops.py# 防火墙/SELinux
-│  ├─ kernel_optimize_ops.py# 内核调优
-│  ├─ disk_partition_ops.py # 裸盘分区+LVM+挂载
-│  ├─ system_optimize_ops.py# 系统优化
-│  └─ openssl_upgrade.py    # OpenSSL 升级
-├─ middleware_ops/         # 中间件管理（Nginx、MySQL、Redis）
-│  ├─ main.py               # 菜单入口
-│  ├─ nginx_manager.py      # Nginx 源码安装、升级与 systemd 管理
-│  ├─ mysql_manager.py      # MySQL 管理
-│  └─ redis_manager.py      # Redis 管理
-├─ software_ops/            # 软件管理（Docker、Minio、Supervisor）
-│  ├─ main.py               # 菜单入口
-│  ├─ docker_manager.py     # Docker 二进制安装与 systemd 管理
-│  ├─ minio_manager.py      # Minio 管理
-│  └─ supervisor_manager.py # Supervisor 管理
-├─ monitor_ops/             # 监控部署（Prometheus、mysqld_exporter）
-│  ├─ main.py               # 菜单入口
-│  ├─ prometheus_monitor.py # Prometheus 二进制安装与 systemd 管理
-│  └─ mysql_monitor.py      # mysqld_exporter 安装与凭据配置
-├─ server_check/            # 服务器巡检与报告生成
-│  └─ main.py               # 系统信息采集与 Markdown 报告生成
-├─ server_check_reports/    # 巡检报告输出目录（运行时生成）
-└─ utils/                   # 工具库
-   ├─ ssh_utils.py          # SSH 连接、命令执行（支持代理）
-   ├─ file_utils.py         # 下载/上传文件、模板渲染、GitHub 版本获取, MD5 工具
-   ├─ output.py             # 彩色日志打印与本地日志落盘
-   ├─ menu_runner.py        # 菜单运行器
-   ├─ choice.py             # 选择工具
-   └─ server_utils.py       # 服务器工具函数
+├─ cli.py                      # 主 CLI 入口
+├─ agent_cli.py                # Agent 诊断入口
+├─ hosts.example               # 主机清单示例
+├─ requirements.txt            # Python 依赖
+├─ config/                     # 服务模板与配置文件
+│  ├─ docker/
+│  ├─ linux/
+│  ├─ minio/
+│  ├─ mysql/
+│  ├─ nginx/
+│  ├─ prometheus/
+│  └─ supervisor/
+├─ packages/                   # 本地缓存的软件包
+├─ agent/                      # Agent 诊断核心逻辑
+│  ├─ planner.py               # 问题意图识别
+│  ├─ runner.py                # 诊断编排与修复执行
+│  └─ tools.py                 # 证据采集与修复工具
+├─ agent_ops/
+│  └─ main.py                  # 交互式 Agent 菜单入口
+├─ server_ops/
+│  ├─ main.py
+│  ├─ hostname_ops.py
+│  ├─ pkg_ops.py
+│  ├─ firewall_ops.py
+│  ├─ kernel_optimize_ops.py
+│  ├─ disk_partition_ops.py
+│  ├─ system_optimize_ops.py
+│  ├─ openssl_upgrade.py
+│  └─ openssh_upgrade.py       # 目前未在菜单中启用
+├─ middleware_ops/
+│  ├─ main.py
+│  ├─ nginx_manager.py
+│  ├─ mysql_manager.py
+│  ├─ redis_manager.py         # 文件存在，但未在菜单中启用
+│  └─ rabbitmq_manager.py      # 文件存在，但未在菜单中启用
+├─ software_ops/
+│  ├─ main.py
+│  ├─ docker_manager.py
+│  ├─ minio_manager.py
+│  └─ supervisor_manager.py
+├─ monitor_ops/
+│  ├─ main.py
+│  ├─ prometheus_monitor.py
+│  ├─ mysql_exporter.py
+│  └─ node_exporter.py
+├─ server_check/
+│  └─ main.py
+├─ scripts/
+│  └─ get-pip.py
+└─ utils/
+   ├─ ssh_utils.py
+   ├─ file_utils.py
+   ├─ output.py
+   ├─ menu_runner.py
+   ├─ choice.py
+   └─ server_utils.py
 ```
 
 ---
 
 ## 环境要求
 
-- Python 3.9+（建议）
-- 基本可访问外网（用于下载组件包与 GitHub API 查询）
-- 目标服务器
-  - Linux（CentOS/Rocky/Alma 等 RHEL 系）
-  - 拥有 sudo/root 权限
-  - 能通过 SSH 访问；若需跳板机，需提供代理参数
+- Python 3.9+
+- 可通过 SSH 访问目标主机
+- 目标主机具备 root 或 sudo 权限
+- 目标系统建议为 RHEL 系发行版
 
 安装依赖：
 
@@ -99,99 +155,118 @@ pip install -r requirements.txt
 
 ---
 
-## 主机清单（hosts）
+## 主机清单
 
-`cli.py` 会从当前工作目录读取名为 `hosts` 的文件（INI 格式，按组组织）。示例：
+程序默认从当前目录读取 `hosts` 文件，格式可参考 `hosts.example`。
 
-```
+示例：
+
+```ini
 [webservers]
 192.168.1.10 user=root password=passw0rd port=22
 192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
 
 [dbservers]
-10.0.0.5 user=root keyfile="/path/to/key" proxy=10.0.0.2 proxy_user=jump proxy_password=*** proxy_port=22
+10.0.0.5 user=root keyfile="/path/to/key" port=22
+10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
 ```
 
 支持字段：
-- user、port、password、keyfile（等价于内部的 key_file）
-- vip（虚拟 IP，若提供将优先用于连接）
-- proxy、proxy_user、proxy_password、proxy_keyfile、proxy_port（跳板机连接）
+
+- `user`
+- `port`
+- `password`
+- `keyfile`
+- `vip`
+- `proxy`
+- `proxy_user`
+- `proxy_password`
+- `proxy_keyfile`
+- `proxy_port`
 
 ---
 
-## 使用方法
+## 使用方式
 
-通用调用方式：
+### 1. 通用 CLI
 
 ```bash
-python cli.py <module_name> <group>
+python cli.py <module_name> <host_pattern>
 ```
 
-- `<module_name>` 可选：
-  - `server_ops` 服务器初始化
-  - `middleware_ops` 中间件管理（Nginx、MySQL、Redis）
-  - `software_ops` 软件管理（Docker、Minio、Supervisor）
-  - `monitor_ops` 监控部署（Prometheus、mysqld_exporter）
-  - `server_check` 服务器巡检（生成 Markdown 报告）
-- `<group>`：主机清单中的组名，例如 `webservers`
+`<host_pattern>` 支持：
+
+- 主机组，例如：`webservers`
+- 单个 IP，例如：`192.168.1.10`
+- 多个 IP，例如：`192.168.1.10,192.168.1.11`
+- 所有主机：`all`
 
 示例：
 
 ```bash
-# 服务器初始化（交互式菜单）
 python cli.py server_ops webservers
-
-# 中间件管理（Nginx、MySQL、Redis）
 python cli.py middleware_ops webservers
-
-# 软件管理（Docker、Minio、Supervisor）
 python cli.py software_ops webservers
-
-# 监控安装（Prometheus、mysqld_exporter）
 python cli.py monitor_ops dbservers
-
-# 服务器巡检（生成报告到 server_check_reports/<group>/<YYYYMM>/）
 python cli.py server_check webservers
+python cli.py agent_ops webservers
+```
+
+### 2. Agent 自然语言诊断
+
+```bash
+python agent_cli.py webservers "nginx 502，帮我定位一下"
+python agent_cli.py 192.168.1.10 "mysql 服务起不来，帮我看下"
 ```
 
 ---
 
-## 主要模块说明
+## Agent 当前支持的诊断方向
 
-- server_ops
-  - 主机名、Yum 源、包管理、防火墙与 SELinux、内核与系统优化
-  - 磁盘分区与挂载：列出未分区裸盘，创建 GPT + LVM，格式化为 XFS 并挂载到 `/data`
-  - OpenSSL 升级：执行安全加固/升级
-- middleware_ops
-  - Nginx：从官网获取稳定版，源码编译安装，支持 `nginx.conf` 模板与 systemd 守护
-  - MySQL：MySQL 数据库管理
-  - Redis：Redis 内存数据库管理
-- software_ops
-  - Docker：从官方 static 发行版安装二进制，支持 systemd 守护
-  - Minio：对象存储服务管理
-  - Supervisor：进程管理工具
-- monitor_ops
-  - Prometheus：从 GitHub 获取最新版，上传并安装，创建数据目录并配置 systemd
-  - mysqld_exporter：从 GitHub 获取最新版，上传并安装，交互式注入数据库连接参数，配置 systemd
-- server_check
-  - 采集基础信息、资源、服务状态、网络与端口、日志错误，输出 Markdown 报告
+当前已内置的主要识别类型：
 
----
+- `nginx 502`
+- 服务异常
+- 磁盘空间不足
+- CPU / 负载过高
+- SSH 登录或连接异常
+- 通用健康检查
 
-## 注意事项与最佳实践
+典型采集内容包括：
 
-- 以 root 或具备 sudo 权限执行目标命令，否则部分操作会失败
-- 磁盘分区/LVM 创建会更改磁盘数据，务必确认选择的磁盘与二次确认提示
-- 外网依赖：若无法直连，需预先下载包到 `packages/` 再由工具上传
-- 跳板机：提供 `proxy` 相关参数可透传连接
-- 多台主机执行时，操作按顺序对每台主机执行，失败会提示但不影响其他主机
+- `systemctl is-active/status`
+- `journalctl -u <service>`
+- `tail /var/log/nginx/error.log`
+- `df -hT`
+- `free -m`
+- `ss -lntp`
+- `journalctl -p err..alert`
+
+当前自动修复能力只覆盖低风险场景，例如：
+
+- 服务不在 `active` 状态时，询问是否执行重启
+
+高风险操作默认不会自动执行。
 
 ---
 
-## 开发与贡献
+## 巡检报告说明
 
-- 欢迎提交 Issue 与 PR
-- 代码风格：尽量保持现有模块化与交互式设计
+执行 `server_check` 时，程序会提示选择或输入报告目录。
+
+- 默认目录：`server_check/reports`
+- 输出形式：按 `组名 / 月份 / 主机报告.md` 归档
+
+并发数量由环境变量 `MAX_WORKERS` 控制，运行巡检前请先设置，例如：`MAX_WORKERS=5`。
+
+---
+
+## 注意事项
+
+- 涉及磁盘分区、格式化、挂载的操作具有破坏性，请务必确认目标磁盘
+- 若目标机器无法直接联网，可先将安装包放入 `packages/` 目录供上传使用
+- 多主机执行时，连接失败的主机会跳过，不影响其他主机继续执行
+- 跳板机场景请正确填写 `proxy*` 参数
 
 ---
 

@@ -73,23 +73,13 @@ def check_and_optimize_sysctl(client):
     print_info("差异详情:")
     print(diff_result)
     
-    if confirm_yes_no("是否上传默认模板并替换？", default=False):
-        # 备份原文件
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        backup_cmd = f"cp /etc/sysctl.conf /etc/sysctl.conf.bak_{timestamp}"
-        print_info(f"备份原始 sysctl.conf 为 sysctl.conf.bak_{timestamp} ...")
-        _, _, status = run_command(client, backup_cmd)
-        if status != 0:
-            print_warning("备份失败，可能文件不存在或权限不足")
+    if not confirm_yes_no("是否上传默认模板并替换？", default=False):
+        print_warning("跳过替换 sysctl.conf")
+        return
 
-        # 上传并生效
-        upload_file(client, local_path, "/etc/sysctl.conf")
-        print_info("已上传配置文件，执行 sysctl -p ...")
-        _, status = run_command_live(client, "sysctl -p")
-        if status == 0:
-            print_success("sysctl 参数应用成功")
-        else:
-            print_error("sysctl -p 执行失败")
+    # 备份原文件
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_cmd = f"cp /etc/sysctl.conf /etc/sysctl.conf.bak_{timestamp}"
     print_info(f"备份原始 sysctl.conf 为 sysctl.conf.bak_{timestamp} ...")
     _, _, status = run_command(client, backup_cmd)
     if status != 0:
