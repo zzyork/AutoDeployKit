@@ -16,7 +16,6 @@ operations = {
     "5": ("磁盘分区与挂载", manage_disk_partition),
     "6": ("系统优化", manage_system_optimize),
     "7": ("OpenSSL管理", manage_ssl),
-    # "8": ("OpenSSH管理", manage_openssh),
 }
 
 def run(clients):

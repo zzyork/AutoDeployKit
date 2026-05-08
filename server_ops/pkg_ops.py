@@ -1,9 +1,57 @@
 import re
+import shlex
 from colorama import Fore
 from utils.ssh_utils import run_command, run_command_live
 from utils.output import print_info, print_success, print_warning, print_error
 from utils.file_utils import upload_file_with_vars
 from utils.choice import confirm_yes_no, menu_choice
+
+REPO_DIR_CANDIDATES = ["/etc/dnf.repos.d", "/etc/yum.repos.d"]
+
+
+def get_repo_dir(client):
+    """返回目标机可用的 repo 目录，兼容 dnf/yum 不同发行版路径。"""
+    for repo_dir in REPO_DIR_CANDIDATES:
+        out, _, status = run_command(client, f"test -d {shlex.quote(repo_dir)} && echo OK || true")
+        if status == 0 and out.strip() == "OK":
+            return repo_dir
+
+    default_dir = REPO_DIR_CANDIDATES[0]
+    _, err, status = run_command(client, f"mkdir -p {shlex.quote(default_dir)}")
+    if status != 0:
+        print_warning(f"创建默认 repo 目录 {default_dir} 失败: {err}")
+    return default_dir
+
+
+def list_repo_files(client):
+    """列出 dnf/yum repo 文件，兼容 /etc/dnf.repos.d 与 /etc/yum.repos.d。"""
+    repo_files = []
+    existing_dirs = []
+
+    for repo_dir in REPO_DIR_CANDIDATES:
+        quoted_dir = shlex.quote(repo_dir)
+        exists, _, _ = run_command(client, f"test -d {quoted_dir} && echo OK || true")
+        if exists.strip() != "OK":
+            continue
+
+        existing_dirs.append(repo_dir)
+        out, err, status = run_command(
+            client,
+            f"find {quoted_dir} -maxdepth 1 -type f -name '*.repo' -print 2>/dev/null | sort"
+        )
+        if status != 0:
+            print_warning(f"扫描 repo 目录 {repo_dir} 失败: {err}")
+            continue
+        repo_files.extend([line.strip() for line in out.splitlines() if line.strip()])
+
+    if repo_files:
+        return repo_files
+
+    if existing_dirs:
+        print_warning("已找到 repo 目录，但未找到任何 .repo 文件。")
+    else:
+        print_warning("未找到 /etc/dnf.repos.d 或 /etc/yum.repos.d 目录。")
+    return []
 
 def upgrade_packages(client):
     print_info("正在升级系统软件包 ...")
@@ -30,7 +78,7 @@ def install_base_tools(client):
 
 def backup_dnf_repo(client, filepath):
     backup_path = filepath + ".bak"
-    cmd = f"cp {filepath} {backup_path}"
+    cmd = f"cp {shlex.quote(filepath)} {shlex.quote(backup_path)}"
     _, err, _ = run_command(client, cmd)
     if err:
         print_error(f"备份文件 {filepath} 失败: {err}")
@@ -39,19 +87,13 @@ def backup_dnf_repo(client, filepath):
     return True
 
 def list_dnf_repos(client):
-    repo_files_out, err, _ = run_command(client, "ls /etc/dnf.repos.d/*.repo")
-    if err:
-        print_error("获取 dnf repo 文件列表失败: " + err)
-        return {}
-
-    repo_files = repo_files_out.strip().splitlines()
+    repo_files = list_repo_files(client)
     if not repo_files:
-        print_warning("未找到任何 dnf repo 文件。")
         return {}
 
     repos = {}
     for filepath in repo_files:
-        content, err, _ = run_command(client, f"cat {filepath}")
+        content, err, _ = run_command(client, f"cat {shlex.quote(filepath)}")
         if err:
             print_error(f"读取 {filepath} 失败: {err}")
             continue
@@ -95,13 +137,14 @@ def modify_dnf_repo_url(client, repo_name, repos):
         print_warning("URL 为空，取消修改。")
         return
 
-    new_url_esc = new_url.replace("/", "\\/")
-    sed_baseurl_cmd = f"sed -i 's|^baseurl=.*|baseurl={new_url_esc}|' {filepath}"
+    quoted_file = shlex.quote(filepath)
+    new_url_esc = new_url.replace("&", "\\&")
+    sed_baseurl_cmd = f"sed -i 's|^baseurl=.*|baseurl={new_url_esc}|' {quoted_file}"
     _, err, _ = run_command(client, sed_baseurl_cmd)
     if err:
         print_warning(f"替换 baseurl 失败，尝试替换 mirrorlist: {err}")
-        sed_mirror_cmd = f"sed -i 's|^mirrorlist=.*|mirrorlist={new_url_esc}|' {filepath}"
-        _, err2 = run_command(client, sed_mirror_cmd)
+        sed_mirror_cmd = f"sed -i 's|^mirrorlist=.*|mirrorlist={new_url_esc}|' {quoted_file}"
+        _, err2, _ = run_command(client, sed_mirror_cmd)
         if err2:
             print_error(f"替换 mirrorlist 失败: {err2}")
             return
@@ -145,7 +188,8 @@ def add_dnf_repo(client):
     
     # 模板文件路径和目标路径
     template_path = "config/linux/temp.repo"
-    remote_path = f"/etc/dnf.repos.d/{repo_name}.repo"
+    repo_dir = get_repo_dir(client)
+    remote_path = f"{repo_dir.rstrip('/')}/{repo_name}.repo"
     
     try:
         # 使用upload_file_with_vars上传配置文件
@@ -193,7 +237,7 @@ def delete_dnf_repo(client):
                 if len(repos_in_file) == 1:
                     # 文件中只有一个源，直接删除整个文件
                     if backup_dnf_repo(client, filepath):
-                        _, err, _ = run_command(client, f"rm -f {filepath}")
+                        _, err, _ = run_command(client, f"rm -f {shlex.quote(filepath)}")
                         if err:
                             print_error(f"删除文件 {filepath} 失败: {err}")
                             return
@@ -205,14 +249,15 @@ def delete_dnf_repo(client):
                     # 文件中有多个源，只删除指定源
                     if backup_dnf_repo(client, filepath):
                         # 使用sed删除指定的源配置段
-                        sed_cmd = f"sed -i '/\\[{selected_repo}\\]/,/\\[/{{/\\[/{{d;}};d;}}' {filepath}"
+                        selected_repo_esc = re.escape(selected_repo)
+                        sed_cmd = f"sed -i '/\\[{selected_repo_esc}\\]/,/\\[/{{/\\[/{{d;}};d;}}' {shlex.quote(filepath)}"
                         _, err, _ = run_command(client, sed_cmd)
                         if err:
                             print_error(f"从文件中删除源配置失败: {err}")
                             return
                         
                         # 清理空行
-                        run_command(client, f"sed -i '/^$/d' {filepath}")
+                        run_command(client, f"sed -i '/^$/d' {shlex.quote(filepath)}")
                         print_success(f"dnf源 '{selected_repo}' 已从文件 {filepath} 中删除")
                     else:
                         print_warning("备份失败，取消删除操作")
@@ -232,9 +277,17 @@ def delete_dnf_repo(client):
     except ValueError:
         print_warning("请输入有效的编号")
 
+
+def prompt_menu_input(prompt_message):
+    try:
+        return input(prompt_message).strip()
+    except (KeyboardInterrupt, EOFError):
+        print_warning("输入中断，返回上一级")
+        return "0"
+
 def manage_dnf_repos(client):
-    repos = list_dnf_repos(client)
     while True:
+        repos = list_dnf_repos(client)
         print("\n==========Yum源管理选项==========")
         print("1. 新增dnf源")
         print("2. 修改dnf源URL")
@@ -251,7 +304,9 @@ def manage_dnf_repos(client):
             for i, name in enumerate(repo_names, 1):
                 print(f"{i}. {name}")
             
-            choice = input(Fore.MAGENTA + "请选择要修改的dnf源编号: " + Fore.RESET).strip()
+            choice = prompt_menu_input(Fore.MAGENTA + "请选择要修改的dnf源编号: " + Fore.RESET)
+            if choice == "0":
+                continue
             try:
                 index = int(choice) - 1
                 if 0 <= index < len(repo_names):

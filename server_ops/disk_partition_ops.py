@@ -1,15 +1,46 @@
-from importlib import import_module
-from utils import output
+import re
+import shlex
+
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.choice import confirm_yes_no, menu_choice
+from utils.choice import confirm_yes_no
 from colorama import Fore
 
 VG_NAME = "vg_data"
 LV_NAME = "lv_data"
 
+
+def get_partition_path(disk, partition_number=1):
+    """返回 Linux 分区路径，兼容 /dev/sdb1 与 /dev/nvme0n1p1 这两类命名。"""
+    disk_name = disk.rsplit("/", 1)[-1]
+    separator = "p" if disk_name[-1:].isdigit() else ""
+    return f"{disk}{separator}{partition_number}"
+
+
+def validate_mount_point(mount_point):
+    return mount_point.startswith("/") and not re.search(r"\s", mount_point)
+
+
+def is_disk_in_use(client, disk_path):
+    """保守判断整盘是否已被使用，避免清空已有文件系统、LVM、RAID 或 swap。"""
+    quoted_disk = shlex.quote(disk_path)
+    checks = [
+        f"lsblk -nr -o MOUNTPOINT {quoted_disk} | awk 'NF {{print}}'",
+        f"blkid {quoted_disk} 2>/dev/null",
+        f"pvs --noheadings -o pv_name 2>/dev/null | grep -Fx {quoted_disk}",
+        f"swapon --noheadings --raw --show=NAME 2>/dev/null | grep -Fx {quoted_disk}",
+        f"mdadm --examine {quoted_disk} >/dev/null 2>&1 && echo RAID",
+        f"wipefs -n {quoted_disk} 2>/dev/null | awk 'NR > 1 {{print}}'",
+    ]
+
+    for cmd in checks:
+        output, _, status = run_command(client, cmd)
+        if status == 0 and output.strip():
+            return True
+    return False
+
 def list_unmounted_disks(client):
-    print_info("正在查找未分区且未挂载的裸磁盘 ...")
+    print_info("正在查找未分区、未挂载且无已知占用签名的裸磁盘 ...")
 
     # 列出所有磁盘及其子设备
     lsblk_cmd = (
@@ -27,8 +58,11 @@ def list_unmounted_disks(client):
 
         full_path = f"/dev/{disk}"
 
+        if is_disk_in_use(client, full_path):
+            continue
+
         # 检查是否有分区存在
-        check_part_cmd = f"lsblk {full_path} -no NAME | grep -v '^{disk}$'"
+        check_part_cmd = f"lsblk -nr {shlex.quote(full_path)} -o NAME | grep -v '^{disk}$'"
         part_output, _, _ = run_command(client, check_part_cmd)
 
         if not part_output.strip():
@@ -39,13 +73,14 @@ def list_unmounted_disks(client):
 
 def create_lvm_and_mount(client, disk):
     print_info(f"开始在 {disk} 上创建 LVM")
+    partition = get_partition_path(disk)
 
     cmds = [
-        f"parted -s {disk} mklabel gpt",
-        f"parted -s {disk} mkpart primary 0% 100%",
-        f"partprobe {disk}",
-        f"pvcreate {disk}1",
-        f"vgcreate {VG_NAME} {disk}1",
+        f"parted -s {shlex.quote(disk)} mklabel gpt",
+        f"parted -s {shlex.quote(disk)} mkpart primary 0% 100%",
+        f"partprobe {shlex.quote(disk)}",
+        f"pvcreate {shlex.quote(partition)}",
+        f"vgcreate {VG_NAME} {shlex.quote(partition)}",
         f"lvcreate -n {LV_NAME} -l 100%FREE {VG_NAME}",
         f"mkfs.xfs /dev/{VG_NAME}/{LV_NAME}",
     ]
@@ -59,16 +94,19 @@ def create_lvm_and_mount(client, disk):
     if not confirm_yes_no("新磁盘已分区并创建 LVM，是否挂载？", default=False):
         return
     
-    mount_point = input("请输入挂载点(/data): ").strip()
-    uuid, status = run_command(client, f"blkid -s UUID -o value /dev/{VG_NAME}/{LV_NAME}")
+    mount_point = input("请输入挂载点(/data): ").strip() or "/data"
+    if not validate_mount_point(mount_point):
+        print_error("挂载点必须是绝对路径，且不能包含空白字符")
+        return
+
+    uuid, _, status = run_command(client, f"blkid -s UUID -o value /dev/{VG_NAME}/{LV_NAME}")
     if status != 0:
         print_error("获取 UUID 失败")
         return
     
     cmds = [
-        f"mkdir -p {mount_point}",
-        f"mount UUID={uuid.strip()} {mount_point}",
-        f"echo \"UUID={uuid.strip()} {mount_point} xfs defaults 0 0\" >> /etc/fstab"
+        f"mkdir -p {shlex.quote(mount_point)}",
+        f"mount UUID={uuid.strip()} {shlex.quote(mount_point)}",
     ]
 
     for cmd in cmds:
@@ -77,13 +115,13 @@ def create_lvm_and_mount(client, disk):
             print_error(f"执行失败: {cmd}")
             return
 
-    if not confirm_yes_no("是否开机自动挂载？", default=False):
-        return
-    
-    output, status = run_command_live(client, f'echo "/dev/{VG_NAME}/{LV_NAME} {mount_point} xfs defaults 0 0" >> /etc/fstab')
-    if status != 0:
-        print_error(f"执行失败: {cmd}")
-        return
+    if confirm_yes_no("是否开机自动挂载？", default=False):
+        fstab_line = f"UUID={uuid.strip()} {mount_point} xfs defaults 0 0"
+        _, status = run_command_live(client, f"echo {shlex.quote(fstab_line)} >> /etc/fstab")
+        if status != 0:
+            print_error("写入 /etc/fstab 失败")
+            return
+        print_success("已写入 /etc/fstab，配置为开机自动挂载")
 
     print_success(f"{disk} 已完成 LVM 创建并挂载到 {mount_point}")
 
