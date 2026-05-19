@@ -334,114 +334,114 @@ def compare_file_content(client, filepath, remote_path):
         return f"比较文件内容时出错: {str(e)}"
 
 def get_stable_version(url: str, prefix: str = "") -> tuple[int, str]:
-    content = ""
-    
-    try:
-        if "api.github.com" in url:
-            headers = {"User-Agent": "version-checker"}
+    """从网页或 GitHub API 中提取最新稳定版本号。
+
+    返回值保持历史兼容：成功返回 ``(0, version)``，失败返回 ``(1, error_message)``。
+    ``prefix`` 可用于限定版本前缀，例如 ``"1.28."`` 或 ``"8.0."``。
+    """
+    normalized_prefix = (prefix or "").strip().lstrip("v")
+
+    def _version_matches_prefix(version: str) -> bool:
+        if not normalized_prefix:
+            return True
+        return version.startswith(normalized_prefix)
+
+    def _is_prerelease(version: str) -> bool:
+        return bool(re.search(r"(?:^|[._-])(alpha|beta|rc|preview|dev|nightly|snapshot)(?:[._-]?\d*)?$", version, re.I))
+
+    def _version_key(version: str):
+        version = version.strip().lstrip("v").replace("_", ".")
+        version = re.sub(r"[+-].*$", "", version)
+
+        # OpenSSH/OpenSSL 风格：9.9p2、1.1.1w
+        parts = []
+        for token in re.findall(r"\d+|[a-z]+", version, re.I):
+            if token.isdigit():
+                parts.append(int(token))
+            else:
+                # 字母后缀按自然顺序排序：a < b < ... < w
+                parts.extend(ord(ch.lower()) - ord("a") + 1 for ch in token)
+        return tuple(parts) if parts else (-1,)
+
+    def _extract_versions(text: str) -> list[str]:
+        candidates = set()
+        patterns = [
+            r"(?<![\w.])v?(\d+\.\d+\.\d+(?:p\d+)?[a-z]?)(?![\w.])",
+            r"(?<![\w.])v?(\d+\.\d+(?:p\d+)?[a-z]?)(?![\w.])",
+            r"(?<![\w])v?(\d+_\d+_\d+[a-z]?)(?![\w])",
+        ]
+        for pattern in patterns:
+            for match in re.findall(pattern, text or "", re.I):
+                version = match.strip().lstrip("v").replace("_", ".")
+                if _version_matches_prefix(version) and not _is_prerelease(version):
+                    candidates.add(version)
+        return sorted(candidates, key=_version_key, reverse=True)
+
+    def _request(url_: str) -> requests.Response:
+        headers = {"User-Agent": "AutoDeployKit/version-checker"}
+        if "api.github.com" in url_:
             headers["Accept"] = "application/vnd.github+json"
-            # .env格式： GITHUB_TOKEN=your_token_here
             token = os.getenv("GITHUB_TOKEN")
             if token:
                 headers["Authorization"] = f"Bearer {token}"
-            
-            resp = requests.get(url, headers=headers, timeout=15)
-            
-            if resp.status_code == 403:
-                remaining = resp.headers.get("X-RateLimit-Remaining")
-                reset = resp.headers.get("X-RateLimit-Reset")
-                if remaining == "0" and reset:
-                    reset_ts = int(reset)
-                    wait_s = max(0, reset_ts - int(time.time()))
-                    return 1, (
-                        f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度"
-                    )
-                return 1, f"GitHub API 403: {resp.text}"
-            
-            if resp.status_code != 200:
-                return 1, f"GitHub API 请求失败: {resp.status_code}, {resp.text}"
-            
-            data = resp.json()
-            content = " ".join([tag.get("name", "") for tag in data])
-        
-        else:
-            sess = requests.Session()
-            
+
+        last_error = None
+        for timeout in ((3, 8), (5, 15)):
             try:
-                r = sess.get(url, timeout=(2, 5))
-                r.raise_for_status()
-                content = r.text
-            except Exception:
-                r = sess.get(url, timeout=(2, 10))
-                r.raise_for_status()
-                content = r.text
+                response = requests.get(url_, headers=headers, timeout=timeout)
+                if response.status_code == 403 and "api.github.com" in url_:
+                    remaining = response.headers.get("X-RateLimit-Remaining")
+                    reset = response.headers.get("X-RateLimit-Reset")
+                    if remaining == "0" and reset:
+                        wait_s = max(0, int(reset) - int(time.time()))
+                        raise RuntimeError(f"GitHub API 触发限流：请在 {wait_s}s 后再试，或配置 GITHUB_TOKEN 提升额度")
+                response.raise_for_status()
+                return response
+            except Exception as e:
+                last_error = e
+        raise RuntimeError(last_error)
+
+    try:
+        response = _request(url)
+
+        if "api.github.com" in url:
+            data = response.json()
+            if isinstance(data, dict):
+                items = data.get("items") or data.get("releases") or data.get("tags") or []
+            else:
+                items = data
+            content = " ".join(
+                str(item.get("name") or item.get("tag_name") or "")
+                for item in items
+                if isinstance(item, dict)
+            )
+        else:
+            content = response.text
     except Exception as e:
         return 1, f"获取版本信息失败: {e}"
-    
-    if "nginx.org/en/download.html" in url:
-        # Nginx download page has a dedicated "Stable version" row.
-        m = re.search(r"Stable version.*?nginx-([0-9.]+)\.tar\.gz", content, re.IGNORECASE | re.DOTALL)
-        if m:
-            stable_version = m.group(1)
-            if not prefix or stable_version.startswith(prefix):
-                return 0, stable_version
 
-    versions = []
-    
-    version_patterns = [
-        r"(\d+\.\d+\.\d+)",  # x.y.z
-        r"(\d+\.\d+)",       # x.y
-        r"((?:\d+\.)+\d+p\d+)",  # x.y.zpN (OpenSSH 格式)
-        r"v(\d+\.\d+\.\d+)", # vx.y.z
-        r"(\d+_\d+_\d+[a-z])",  # x_y_z + a-z suffix
-        r"(\d+_\d+_\d+)",    # x_y.z
-        r"v(\d+_\d+_\d+[a-z])", # vx_y_z + a-z suffix
-        r"v(\d+_\d+_\d+)",   # vx_y_z
-    ]
-    
-    for pattern in version_patterns:
-        matches = re.findall(pattern, content, re.IGNORECASE)
-        for match in matches:
-            if isinstance(match, tuple):
-                match = match[0] if match[0] else match[1]
-            
-            version_str = match.strip().lstrip('v')
-            
-            if version_str.startswith(prefix):
-                versions.append(version_str)
-    
-    versions = list(set(versions))
+    # Nginx 官网下载页有明确的 Stable version 区块，优先使用，避免 Mainline/Legacy version 干扰。
+    if "nginx.org/en/download.html" in url:
+        stable_block_match = re.search(
+            r"Stable\s+version(?P<block>.*?)(?:Legacy\s+versions|Source\s+Code|Pre-Built\s+Packages|$)",
+            content,
+            re.I | re.S,
+        )
+        stable_block = stable_block_match.group("block") if stable_block_match else content
+        stable_versions = [
+            version
+            for version in _extract_versions(stable_block)
+            if _version_matches_prefix(version)
+        ]
+        if stable_versions:
+            return 0, stable_versions[0]
+
+    versions = _extract_versions(content)
     if not versions:
-        return 1, f"未找到前缀为 {prefix} 的版本"
-    
-    def version_key(v: str):
-        # Handle OpenSSH format: x.y.zpN
-        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?p(\d+)$", v)
-        if m:
-            return tuple(int(x or 0) for x in m.groups())
-        
-        # Handle underscore format with letter suffix: x_y_z[a-w]
-        m = re.match(r"^(\d+)_(\d+)_(\d+)([a-z])$", v)
-        if m:
-            nums = tuple(int(x) for x in m.groups()[:3])
-            suffix = ord(m.group(4)) - ord('a')  # Convert letter to number (a=0, b=1, etc.)
-            return nums + (suffix,)
-        
-        # Handle underscore format without suffix: x_y_z
-        m = re.match(r"^(\d+)_(\d+)_(\d+)$", v)
-        if m:
-            return tuple(int(x) for x in m.groups())
-        
-        # Handle standard dot format: x.y.z or x.y
-        try:
-            parts = v.split('_') if '_' in v else v.split('.')
-            return tuple(map(int, parts))
-        except ValueError:
-            return (-1, -1, -1, -1)
-    
-    stable_version = max(versions, key=version_key)
-    # Convert underscores to dots for output format
-    return 0, stable_version.replace('_', '.')
+        prefix_tip = f"前缀为 {normalized_prefix} 的" if normalized_prefix else "可用"
+        return 1, f"未找到{prefix_tip}稳定版本"
+
+    return 0, versions[0]
 
 
 def get_eol_date(software: str, version: str) -> str:
