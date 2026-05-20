@@ -13,37 +13,11 @@ from utils.choice import confirm_yes_no, menu_choice
 NGINX_VERSION_CMD = r'nginx -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1'
 
 
-def _shell_quote(value):
-    return shlex.quote(str(value))
-
-
-def _normalize_remote_path(path):
-    """Normalize a Linux remote path that may contain Windows-style backslashes."""
-    return str(path).strip().replace('\\', '/')
-
-
-def _remote_join(*parts):
-    """Join Linux remote path fragments regardless of the local OS."""
-    return posixpath.join(*(_normalize_remote_path(part) for part in parts))
-
-
-def _remote_dirname(path):
-    return posixpath.dirname(_normalize_remote_path(path))
-
-
-def _remote_basename(path):
-    return posixpath.basename(_normalize_remote_path(path))
-
-
 def _validate_nginx_version(version):
     if not version:
         raise ValueError("Nginx版本号不能为空")
     if not all(part.isdigit() for part in version.split('.')) or len(version.split('.')) < 2:
         raise ValueError(f"Nginx版本号格式不正确: {version}")
-
-
-def _nginx_install_path(version):
-    return "/usr/local/nginx" + '.'.join(version.split('.')[:2])
 
 
 def _get_current_nginx_binary(client):
@@ -55,11 +29,12 @@ def _get_nginx_prefix(client, nginx_binary):
     if nginx_binary:
         output, _, status = run_command(
             client,
-            f'{_shell_quote(nginx_binary)} -V 2>&1 | tr " " "\\n" | grep -m1 "^--prefix=" | cut -d= -f2-'
+            f'{shlex.quote(str(nginx_binary))} -V 2>&1 | tr " " "\\n" | grep -m1 "^--prefix=" | cut -d= -f2-'
         )
         if status == 0 and output.strip():
             return output.strip()
-        return _remote_dirname(_remote_dirname(nginx_binary.rstrip('/')))
+        normalized_binary = str(nginx_binary.rstrip('/')).strip().replace('\\', '/')
+        return posixpath.dirname(posixpath.dirname(normalized_binary))
     return ""
 
 
@@ -79,19 +54,19 @@ def _get_nginx_conf_path(client, nginx_binary, nginx_prefix):
     if nginx_binary:
         output, _, status = run_command(
             client,
-            f'{_shell_quote(nginx_binary)} -V 2>&1 | tr " " "\\n" | grep -m1 "^--conf-path=" | cut -d= -f2-'
+            f'{shlex.quote(str(nginx_binary))} -V 2>&1 | tr " " "\\n" | grep -m1 "^--conf-path=" | cut -d= -f2-'
         )
         if status == 0 and output.strip():
             return output.strip()
 
-    return _remote_join(nginx_prefix, "conf", "nginx.conf") if nginx_prefix else ""
+    return posixpath.join(str(nginx_prefix).strip().replace('\\', '/'), "conf", "nginx.conf") if nginx_prefix else ""
 
 
 def _get_nginx_configure_args(client, nginx_binary, new_install_path):
     if not nginx_binary:
         return ""
 
-    output, _, status = run_command(client, f'{_shell_quote(nginx_binary)} -V 2>&1')
+    output, _, status = run_command(client, f'{shlex.quote(str(nginx_binary))} -V 2>&1')
     if status != 0 or "configure arguments:" not in output:
         return ""
 
@@ -101,21 +76,21 @@ def _get_nginx_configure_args(client, nginx_binary, new_install_path):
 
     parts = shlex.split(args)
     filtered = [part for part in parts if not part.startswith("--prefix=")]
-    return " ".join([f"--prefix={_shell_quote(new_install_path)}", *(_shell_quote(part) for part in filtered)])
+    return " ".join([f"--prefix={shlex.quote(str(new_install_path))}", *(shlex.quote(str(part)) for part in filtered)])
 
 
 def _copy_nginx_conf_dir(client, old_prefix, new_install_path):
     if not old_prefix or old_prefix == new_install_path:
         return True
-    old_conf_dir = _remote_join(old_prefix, "conf")
-    new_conf_dir = _remote_join(new_install_path, "conf")
-    output, _, status = run_command(client, f'test -d {_shell_quote(old_conf_dir)}')
+    old_conf_dir = posixpath.join(str(old_prefix).strip().replace('\\', '/'), "conf")
+    new_conf_dir = posixpath.join(str(new_install_path).strip().replace('\\', '/'), "conf")
+    output, _, status = run_command(client, f'test -d {shlex.quote(str(old_conf_dir))}')
     if status != 0:
         print_warning(f"未找到旧配置目录，跳过配置目录迁移: {old_conf_dir}")
         return True
 
     print_info(f"迁移旧配置目录到新安装目录: {old_conf_dir} -> {new_conf_dir}")
-    _, status = run_command_live(client, f'cp -a {_shell_quote(old_conf_dir)}/. {_shell_quote(new_conf_dir)}/')
+    _, status = run_command_live(client, f'cp -a {shlex.quote(str(old_conf_dir))}/. {shlex.quote(str(new_conf_dir))}/')
     if status != 0:
         print_error("迁移nginx配置目录失败")
         return False
@@ -131,11 +106,11 @@ def install_nginx(client, version=None):
 
     if confirm_yes_no("是否确定安装？", default=False):
         # 提示输入Nginx安装目录
-        default_install_path = _nginx_install_path(version)
+        default_install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
         install_path = input(Fore.MAGENTA + f"请输入Nginx安装目录 (默认: {default_install_path}): ").strip()
         if not install_path:
             install_path = default_install_path
-        install_path = _normalize_remote_path(install_path)
+        install_path = str(install_path).strip().replace('\\', '/')
         print_info("Nginx将安装到: " + install_path)
         
         # 提示输入日志目录
@@ -143,7 +118,7 @@ def install_nginx(client, version=None):
         log_dir = input(Fore.MAGENTA + f"请输入Nginx日志目录 (默认: {default_log_dir}): ").strip()
         if not log_dir:
             log_dir = default_log_dir
-        log_dir = _normalize_remote_path(log_dir)
+        log_dir = str(log_dir).strip().replace('\\', '/')
         print_info("Nginx日志目录: " + log_dir + "\n")
         
         print_info("开始安装Nginx " + version + "......\n")
@@ -179,10 +154,10 @@ def install_nginx(client, version=None):
                 return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "cd /usr/local/src/nginx-" + version + " && ./configure --prefix=" + _shell_quote(install_path) + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
+            "cd /usr/local/src/nginx-" + version + " && ./configure --prefix=" + shlex.quote(str(install_path)) + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
             "cd /usr/local/src/nginx-" + version + " && make && make install",
-            "ln -fs " + _shell_quote(_remote_join(install_path, "sbin", "nginx")) + " /usr/bin/nginx",
-            "mkdir -p " + _shell_quote(_remote_join(install_path, "conf", "conf.d")),
+            "ln -fs " + shlex.quote(str(posixpath.join(str(install_path).strip().replace('\\', '/'), "sbin", "nginx"))) + " /usr/bin/nginx",
+            "mkdir -p " + shlex.quote(str(posixpath.join(str(install_path).strip().replace('\\', '/'), "conf", "conf.d"))),
         ]
 
         cmd_status = 0
@@ -199,7 +174,7 @@ def install_nginx(client, version=None):
             print_info("安装完成！当前nginx版本：" + current_version)
             if confirm_yes_no("是否自动调整nginx.conf文件？", default=False):
                 local_path = os.path.join("config", "nginx", "nginx.conf")
-                remote_path = _remote_join(install_path, "conf", "nginx.conf")
+                remote_path = posixpath.join(str(install_path).strip().replace('\\', '/'), "conf", "nginx.conf")
                 upload_file_with_vars(client, local_path, remote_path, {'NGINX_INSTALL_PATH': install_path, 'NGINX_LOG_DIR': log_dir})
                 print_success("✓ nginx.conf配置完成\n")
             if confirm_yes_no("\n是否配置systemd守护进程？", default=False):
@@ -210,7 +185,7 @@ def install_nginx(client, version=None):
                 # 执行systemd相关命令
                 systemd_cmds = [
                     "systemctl daemon-reload",
-                    f"mkdir -p {_shell_quote(log_dir)}",
+                    f"mkdir -p {shlex.quote(str(log_dir))}",
                     "systemctl enable --now nginx",
                 ]
                 for cmd in systemd_cmds:
@@ -231,6 +206,12 @@ def upgrade_nginx(client, version=None):
         _validate_nginx_version(version)
     except ValueError as e:
         print_error(str(e))
+        return None
+
+    print_warning("自动化升级Nginx存在风险：可能出现配置不兼容、编译失败、软链接切换异常、服务重启失败或业务中断。")
+    print_warning("升级流程会先执行备份，但备份不等于零风险；请确认已了解影响并选择合适维护窗口。")
+    if not confirm_yes_no("确认继续升级Nginx？", default=False):
+        print_warning("取消升级操作")
         return None
 
     print_info("开始升级 Nginx 到最新发行版 " + version + "......\n")
@@ -254,9 +235,9 @@ def upgrade_nginx(client, version=None):
     local_path = os.path.join("packages", "nginx-" + version + ".tar.gz")
     url = "https://nginx.org/download/nginx-" + version + ".tar.gz"
     remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
-    install_path = _nginx_install_path(version)
+    install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
 
-    wget_cmd = f"wget -O {_shell_quote(remote_path)} {_shell_quote(url)}"
+    wget_cmd = f"wget -O {shlex.quote(str(remote_path))} {shlex.quote(str(url))}"
     output, wget_status = run_command_live(client, wget_cmd)
     
     if wget_status == 0:
@@ -276,7 +257,7 @@ def upgrade_nginx(client, version=None):
     if not configure_args:
         print_warning("无法读取旧版nginx编译参数，将使用默认编译参数")
         configure_args = " ".join([
-            f"--prefix={_shell_quote(install_path)}",
+            f"--prefix={shlex.quote(str(install_path))}",
             "--with-http_stub_status_module",
             "--with-http_gzip_static_module",
             "--with-http_realip_module",
@@ -288,9 +269,9 @@ def upgrade_nginx(client, version=None):
 
     source_dir = f"/usr/local/src/nginx-{version}"
     cmds = [
-        f"tar zxf {_shell_quote(remote_path)} -C /usr/local/src/",
-        f"cd {_shell_quote(source_dir)} && ./configure {configure_args}",
-        f"cd {_shell_quote(source_dir)} && make && make install",
+        f"tar zxf {shlex.quote(str(remote_path))} -C /usr/local/src/",
+        f"cd {shlex.quote(str(source_dir))} && ./configure {configure_args}",
+        f"cd {shlex.quote(str(source_dir))} && make && make install",
     ]
 
     cmd_status = 0
@@ -309,16 +290,16 @@ def upgrade_nginx(client, version=None):
         if not _copy_nginx_conf_dir(client, current_prefix, install_path):
             return None
 
-        new_binary = _remote_join(install_path, "sbin", "nginx")
-        test_conf = current_conf or _remote_join(install_path, "conf", "nginx.conf")
+        new_binary = posixpath.join(str(install_path).strip().replace('\\', '/'), "sbin", "nginx")
+        test_conf = current_conf or posixpath.join(str(install_path).strip().replace('\\', '/'), "conf", "nginx.conf")
         print_info("使用新版本nginx测试当前配置...")
-        _, test_status = run_command_live(client, f'{_shell_quote(new_binary)} -t -c {_shell_quote(test_conf)}')
+        _, test_status = run_command_live(client, f'{shlex.quote(str(new_binary))} -t -c {shlex.quote(str(test_conf))}')
         if test_status != 0:
             print_error("新版本nginx配置测试失败，未切换/usr/bin/nginx")
             print_warning("请检查配置兼容性；如需恢复，可使用回滚功能")
             return None
 
-        output, link_status = run_command_live(client, f'ln -fs {_shell_quote(new_binary)} /usr/bin/nginx')
+        output, link_status = run_command_live(client, f'ln -fs {shlex.quote(str(new_binary))} /usr/bin/nginx')
         if link_status != 0:
             print_error("更新/usr/bin/nginx软链接失败")
             return None
@@ -334,7 +315,7 @@ def upgrade_nginx(client, version=None):
                 return None
 
         current_version, _, status = run_command(client, NGINX_VERSION_CMD)
-        current_version = current_version.strip() if current_version else ""
+        current_version = current_version.strip() if status == 0 and current_version else ""
         print_success(f"\n升级已完成！\n当前nginx版本: {current_version}")
         print_info("建议在非业务高峰期手动重启nginx")
         
@@ -344,6 +325,12 @@ def upgrade_nginx(client, version=None):
             output, status = run_command_live(client, 'systemctl restart nginx')
             if status == 0:
                 print_success("nginx服务重启成功")
+                current_version, _, version_status = run_command(client, NGINX_VERSION_CMD)
+                current_version = current_version.strip() if version_status == 0 and current_version else ""
+                if version_status == 0 and current_version:
+                    print_success("重启后当前Nginx版本：" + current_version)
+                else:
+                    print_warning("重启后未能获取Nginx当前版本，请手动检查")
             else:
                 print_error("nginx服务重启失败，请检查配置")
                 print_warning("如果需要，可以使用回滚功能恢复到之前版本")
@@ -379,7 +366,7 @@ def backup_nginx(client):
     output, error, status = run_command(client, 'readlink -f /usr/bin/nginx')
     if status == 0:
         nginx_binary = output.strip()
-        output, error, status = run_command(client, f'cp -a {_shell_quote(nginx_binary)} {_shell_quote(backup_dir)}/nginx')
+        output, error, status = run_command(client, f'cp -a {shlex.quote(str(nginx_binary))} {shlex.quote(str(backup_dir))}/nginx')
         if status != 0:
             print_error("备份nginx二进制文件失败")
             return None
@@ -393,8 +380,8 @@ def backup_nginx(client):
     if status == 0 and output.strip():
         install_dirs = [item.strip() for item in output.strip().split('\n') if item.strip()]
         for install_dir in install_dirs:
-            dir_name = _remote_basename(install_dir)
-            output, error, status = run_command(client, f'cp -a {_shell_quote(install_dir)} {_shell_quote(backup_dir)}/{_shell_quote(dir_name)}')
+            dir_name = posixpath.basename(str(install_dir).strip().replace('\\', '/'))
+            output, error, status = run_command(client, f'cp -a {shlex.quote(str(install_dir))} {shlex.quote(str(backup_dir))}/{shlex.quote(str(dir_name))}')
             if status != 0:
                 print_error(f"备份安装目录失败: {install_dir}")
                 return None
@@ -406,8 +393,8 @@ def backup_nginx(client):
         config_files = [item.strip() for item in output.strip().split('\n') if item.strip()]
         for config_file in config_files:
             rel_path = config_file.replace('/usr/local/', '')
-            backup_config_path = f"{backup_dir}/conf_{_remote_basename(rel_path)}"
-            output, error, status = run_command(client, f'cp -a {_shell_quote(config_file)} {_shell_quote(backup_config_path)}')
+            backup_config_path = f"{backup_dir}/conf_{posixpath.basename(str(rel_path).strip().replace('\\', '/'))}"
+            output, error, status = run_command(client, f'cp -a {shlex.quote(str(config_file))} {shlex.quote(str(backup_config_path))}')
             if status != 0:
                 print_error(f"备份配置文件失败: {config_file}")
                 return None
@@ -417,7 +404,7 @@ def backup_nginx(client):
     output, error, status = run_command(client, 'test -f /etc/systemd/system/nginx.service')
     if status == 0:
         systemd_service = "/etc/systemd/system/nginx.service"
-        output, error, status = run_command(client, f'cp -a /etc/systemd/system/nginx.service {_shell_quote(backup_dir)}/')
+        output, error, status = run_command(client, f'cp -a /etc/systemd/system/nginx.service {shlex.quote(str(backup_dir))}/')
         if status != 0:
             print_error("备份systemd服务文件失败")
             return None
@@ -437,7 +424,7 @@ def backup_nginx(client):
     backup_info_json = json.dumps(backup_info, indent=2, ensure_ascii=False)
     
     # 写入备份信息文件
-    output, error, status = run_command(client, f'cat > {_shell_quote(backup_info_file)} << EOF\n{backup_info_json}\nEOF')
+    output, error, status = run_command(client, f'cat > {shlex.quote(str(backup_info_file))} << EOF\n{backup_info_json}\nEOF')
     if status != 0:
         print_error("创建备份信息文件失败")
         return None
@@ -466,9 +453,9 @@ def rollback_nginx(client):
                 backup_info = json.loads(output)
                 print(f"{i}. 版本: {backup_info['version']}, 时间: {backup_info['timestamp']}")
             except:
-                print(f"{i}. {_remote_basename(backup_dir)} (信息文件损坏)")
+                print(f"{i}. {posixpath.basename(str(backup_dir).strip().replace('\\', '/'))} (信息文件损坏)")
         else:
-            print(f"{i}. {_remote_basename(backup_dir)} (无信息文件)")
+            print(f"{i}. {posixpath.basename(str(backup_dir).strip().replace('\\', '/'))} (无信息文件)")
     
     choice = menu_choice("请选择要回滚到的备份编号 (0取消): ", valid_choices=[str(i) for i in range(len(backup_dirs) + 1)], default="0")
     if choice == "0":
@@ -504,7 +491,7 @@ def rollback_nginx(client):
     # 恢复nginx二进制文件
     if backup_info.get('nginx_binary'):
         print_info("恢复nginx二进制文件...")
-        output, _, status = run_command(client, f'cp -a {_shell_quote(selected_backup)}/nginx /usr/bin/nginx')
+        output, _, status = run_command(client, f'cp -a {shlex.quote(str(selected_backup))}/nginx /usr/bin/nginx')
         if status != 0:
             print_error("恢复nginx二进制文件失败")
             return
@@ -513,8 +500,8 @@ def rollback_nginx(client):
     if backup_info.get('install_dirs'):
         print_info("恢复nginx安装目录...")
         for install_dir in backup_info['install_dirs']:
-            dir_name = _remote_basename(install_dir)
-            output, _, status = run_command(client, f'cp -a {_shell_quote(selected_backup)}/{_shell_quote(dir_name)}/. {_shell_quote(install_dir)}/')
+            dir_name = posixpath.basename(str(install_dir).strip().replace('\\', '/'))
+            output, _, status = run_command(client, f'cp -a {shlex.quote(str(selected_backup))}/{shlex.quote(str(dir_name))}/. {shlex.quote(str(install_dir))}/')
             if status != 0:
                 print_error(f"恢复安装目录失败: {install_dir}")
                 return
@@ -524,8 +511,8 @@ def rollback_nginx(client):
         print_info("恢复配置文件...")
         for config_file in backup_info['config_files']:
             rel_path = config_file.replace('/usr/local/', '')
-            backup_config_path = f"{selected_backup}/conf_{_remote_basename(rel_path)}"
-            output, error, status = run_command(client, f'cp -a {_shell_quote(backup_config_path)} {_shell_quote(config_file)}')
+            backup_config_path = f"{selected_backup}/conf_{posixpath.basename(str(rel_path).strip().replace('\\', '/'))}"
+            output, error, status = run_command(client, f'cp -a {shlex.quote(str(backup_config_path))} {shlex.quote(str(config_file))}')
             if status != 0:
                 print_error(f"恢复配置文件失败: {config_file}")
                 return
@@ -533,7 +520,7 @@ def rollback_nginx(client):
     # 恢复systemd服务文件
     if backup_info.get('systemd_service'):
         print_info("恢复systemd服务文件...")
-        output, error, status = run_command(client, f'cp -a {_shell_quote(selected_backup)}/nginx.service /etc/systemd/system/')
+        output, error, status = run_command(client, f'cp -a {shlex.quote(str(selected_backup))}/nginx.service /etc/systemd/system/')
         if status == 0:
             output, error, status = run_command(client, 'systemctl daemon-reload')
     
@@ -582,16 +569,13 @@ def list_nginx_backups(client):
                     print(f"   安装目录: {', '.join(backup_info['install_dirs'])}")
                 print()
             except:
-                print(f"{i}. {_remote_basename(backup_dir)} (信息文件损坏)")
+                print(f"{i}. {posixpath.basename(str(backup_dir).strip().replace('\\', '/'))} (信息文件损坏)")
         else:
-            print(f"{i}. {_remote_basename(backup_dir)} (无信息文件)")
+            print(f"{i}. {posixpath.basename(str(backup_dir).strip().replace('\\', '/'))} (无信息文件)")
 
 def manage_nginx(client):
-    global current_version, status, stable_version
-    current_version, _, status = run_command(client, NGINX_VERSION_CMD)
-    current_version = current_version.strip() if current_version else ""
-    status, info = get_stable_version("https://nginx.org/en/download.html")
-    if status == 0:
+    stable_status, info = get_stable_version("https://nginx.org/en/download.html")
+    if stable_status == 0:
         stable_version = info
     else:
         print_error(info)
@@ -599,8 +583,10 @@ def manage_nginx(client):
     
     print_info("Nginx最新stable版本为：" + stable_version)
     while True:
+        current_version, _, version_status = run_command(client, NGINX_VERSION_CMD)
+        current_version = current_version.strip() if version_status == 0 and current_version else ""
         print("=== Nginx软件管理 ===")
-        if status != 0 or not current_version or current_version == "":
+        if version_status != 0 or not current_version or current_version == "":
             print(f"1. 安装 Nginx 最新稳定版 {stable_version}")
             print("2. 安装其他版本的 Nginx（手动指定版本号）")
             print("0. 返回/跳过")
@@ -610,12 +596,11 @@ def manage_nginx(client):
             elif choice == "2":
                 while True:
                     input_version = input(Fore.MAGENTA + "请输入要安装的Nginx版本号 (例如 1.28.1): ").strip()
-                    status, version = get_stable_version("https://nginx.org/en/download.html", input_version)
-                    if status == 0:
-                        stable_version = info
+                    input_status, version = get_stable_version("https://nginx.org/en/download.html", input_version)
+                    if input_status == 0:
                         break
                     else:
-                        print_error(info)
+                        print_error(version)
                 eol = get_eol_date("nginx", version)
                 if eol != "Unknown":
                     print_warning(f"注意: {eol}")
@@ -627,21 +612,30 @@ def manage_nginx(client):
         else:
             print_success("当前Nginx版本：" + current_version)
             print_info("Nginx最新稳定版为：" + stable_version)
-            print("1. 升级 Nginx 到最新稳定版")
-            print("2. 备份当前 Nginx 版本")
-            print("3. 回滚 Nginx 到之前版本")
-            print("4. 查看所有备份")
+            is_latest_stable = current_version == stable_version
+
+            menu_actions = []
+            if not is_latest_stable:
+                menu_actions.append(("升级 Nginx 到最新稳定版", "upgrade"))
+            menu_actions.extend([
+                ("备份当前 Nginx 版本", "backup"),
+                ("回滚 Nginx 到之前版本", "rollback"),
+                ("查看所有备份", "list_backups"),
+            ])
+
+            for index, (label, _) in enumerate(menu_actions, 1):
+                print(f"{index}. {label}")
             print("0. 返回/跳过")
-            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
-            if choice == "1":
-                upgrade_nginx(client, version=stable_version)
-            elif choice == "2":
-                backup_nginx(client)
-            elif choice == "3":
-                rollback_nginx(client)
-            elif choice == "4":
-                list_nginx_backups(client)
-            elif choice == "0":
+            valid_choices = [str(i) for i in range(1, len(menu_actions) + 1)] + ['0']
+            choice = menu_choice("请选择操作编号: ", valid_choices=valid_choices, default="0")
+            if choice == "0":
                 break
-            else:
-                print("无效选项，请重新输入")
+            action = menu_actions[int(choice) - 1][1]
+            if action == "upgrade":
+                upgrade_nginx(client, version=stable_version)
+            elif action == "backup":
+                backup_nginx(client)
+            elif action == "rollback":
+                rollback_nginx(client)
+            elif action == "list_backups":
+                list_nginx_backups(client)
