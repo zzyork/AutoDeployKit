@@ -32,3 +32,25 @@
   - 示例：`mv`、`rm`、`rmdir`、`unlink`、`kill`、`pkill`、`killall`、`systemctl stop`、`shutdown`、`poweroff`、`reboot`、`docker stop`、`docker rm`、`docker compose down`、数据库 `DELETE/DROP/TRUNCATE`、`git reset --hard`、`git clean -fd`
 
 - 兜底规则：如果某条命令是否会产生修改存在歧义，则默认按“修改类命令”处理，先确认后再执行。
+
+## Supervisor 子应用创建流程
+
+- 当用户要求“新建 supervisor 子应用”“从已有后端子应用抄配置”或类似操作时，必须按本流程处理。
+- 在连接目标服务器后，先只执行查看类命令收集信息，不要立即写入配置：
+  - 检查 `supervisord` / `supervisorctl` 是否存在及服务状态。
+  - 读取 `/etc/supervisord.conf` 的 `files=` include 配置，确认 ini 目录，常见为 `/etc/supervisord.d`。
+  - 查看已有后端应用 ini 配置摘要，重点关注 `command`、`directory`、`user`、`autostart`、`startsecs`、`autorestart`、`stdout_logfile` 等字段。
+  - 检查目标 ini 是否已存在；如已存在，停止操作并询问用户，不得覆盖。
+  - 检查目标应用目录、日志目录是否存在，并查看相关端口占用情况。
+- 根据已有同类后端配置生成新 ini 草案：
+  - `[program:<应用名>]` 与文件名 `<应用名>.ini` 保持一致。
+  - 优先复用同环境、同 Java 版本、同 jar 命名习惯的后端应用配置。
+  - 端口应避开已占用端口；若端口无法从上下文确定，必须询问用户确认。
+  - 不要擅自创建应用目录、上传 jar 或变更业务文件，除非用户明确要求。
+- 在写入远程 ini 文件、执行 `supervisorctl update`、`systemctl reload/restart` 等任何修改/重启类操作前，必须向用户展示拟写入的完整配置和拟执行动作，并取得明确确认。
+- 用户确认后，才可将 ini 写入目标 include 目录，并执行 `supervisorctl update` 应用配置。
+- 写入后必须验证：
+  - 读取新建 ini 内容确认配置落地。
+  - 执行 `supervisorctl status <应用名>` 查看状态。
+  - 如果出现 `BACKOFF`、`FATAL` 等状态，只做查看和说明；常见原因包括应用目录或 jar 尚未部署、端口冲突、启动参数错误。不得擅自删除、移动、停止服务或修改业务文件。
+- 最终回复用户时，说明已操作的服务器、ini 路径、核心配置、`supervisorctl update` 结果和当前状态。
