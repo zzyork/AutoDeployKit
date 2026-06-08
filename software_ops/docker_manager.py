@@ -1,5 +1,5 @@
 import os
-from utils.file_utils import download_file, upload_file, get_stable_version
+from utils.file_utils import download_file, upload_file, get_stable_version, remote_download_or_upload
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -15,20 +15,8 @@ def install_docker(client):
         remote_path = "/usr/local/src/docker-" + stable_version + ".tgz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
-        _, wget_status = run_command_live(client, wget_cmd)
-        
-        if wget_status == 0:
-            pass
-        else:
-            print_warning("下载失败，尝试本地上传")
-            try:
-                download_file(url, local_path)
-                upload_file(client, local_path, remote_path)
-                print_info("本地上传成功")
-            except RuntimeError as e:
-                print_error(f"本地上传也失败，中止安装: {e}")
-                print_warning("返回上一级菜单\n")
-                return None
+        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+            return None
                 
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
@@ -101,20 +89,8 @@ def install_docker_compose(client):
         remote_path = "/usr/local/src/docker-compose-linux-x86_64"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
-        _, wget_status = run_command_live(client, wget_cmd)
-        
-        if wget_status == 0:
-            pass
-        else:
-            print_warning("下载失败，尝试本地上传")
-            try:
-                download_file(url, local_path)
-                upload_file(client, local_path, remote_path)
-                print_info("本地上传成功")
-            except RuntimeError as e:
-                print_error(f"本地上传也失败，中止安装: {e}")
-                print_warning("返回上一级菜单\n")
-                return None
+        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+            return None
                 
         cmds = [
             "cp /usr/local/src/docker-compose-linux-x86_64 /usr/local/bin/docker-compose",

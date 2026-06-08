@@ -4,7 +4,7 @@ import re
 import shlex
 from utils.ssh_utils import run_command_live, run_command
 from utils.output import print_info, print_success, print_warning, print_error
-from utils.file_utils import download_file, upload_file, get_stable_version
+from utils.file_utils import download_file, upload_file, get_stable_version, remote_download_or_upload
 from utils.choice import confirm_yes_no, menu_choice
 
 current_version = None
@@ -51,20 +51,8 @@ def upgrade_openssl_1_1_1(client):
     url = "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz"
 
     wget_cmd = f"cd /usr/local/src && wget {url}"
-    output, wget_status = run_command_live(client, wget_cmd)
-    
-    if wget_status == 0:
-        pass
-    else:
-        print_warning("！！！下载失败，尝试本地上传")
-        try:
-            download_file(url, local_path)
-            upload_file(client, local_path, remote_path)
-            print_success("本地上传成功")
-        except RuntimeError as e:
-            print_error(f"！！！本地上传也失败，中止升级: {e}")
-            print_warning("返回上一级菜单\n")
-            return None
+    if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "！！！本地上传也失败，中止升级"):
+        return None
     cmds = [
         "tar zxf /usr/local/src/openssl-1.1.1w.tar.gz -C /usr/local/src/",
         "cd /usr/local/src/openssl-1.1.1w && ./config --prefix=/usr/local/openssl1.1 no-zlib",

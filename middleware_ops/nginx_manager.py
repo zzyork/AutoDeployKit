@@ -4,7 +4,7 @@ import datetime
 import shlex
 import posixpath
 from colorama import Fore
-from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date
+from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date, remote_download_or_upload
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -138,20 +138,8 @@ def install_nginx(client, version=None):
         remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
-        output, wget_status = run_command_live(client, wget_cmd)
-        
-        if wget_status == 0:
-            pass
-        else:
-            print_warning("下载失败，尝试本地上传")
-            try:
-                download_file(url, local_path)
-                upload_file(client, local_path, remote_path)
-                print_success("本地上传成功")
-            except RuntimeError as e:
-                print_error(f"本地上传也失败，中止安装: {e}")
-                print_warning("返回上一级菜单\n")
-                return None
+        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+            return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
             "cd /usr/local/src/nginx-" + version + " && ./configure --prefix=" + shlex.quote(str(install_path)) + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
@@ -238,20 +226,8 @@ def upgrade_nginx(client, version=None):
     install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
 
     wget_cmd = f"wget -O {shlex.quote(str(remote_path))} {shlex.quote(str(url))}"
-    output, wget_status = run_command_live(client, wget_cmd)
-    
-    if wget_status == 0:
-        pass
-    else:
-        print_warning("下载失败，尝试本地上传")
-        try:
-            download_file(url, local_path)
-            upload_file(client, local_path, remote_path)
-            print_success("本地上传成功")
-        except RuntimeError as e:
-            print_error(f"本地上传也失败，中止升级: {e}")
-            print_warning("返回上一级菜单\n")
-            return None
+    if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "本地上传也失败，中止升级"):
+        return None
     
     configure_args = _get_nginx_configure_args(client, current_binary, install_path)
     if not configure_args:

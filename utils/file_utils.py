@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import sys
 import tempfile
 import time
@@ -9,8 +10,8 @@ import difflib
 from datetime import datetime, timezone
 
 import requests
-from utils.output import print_error, print_info
-from utils.ssh_utils import run_command
+from utils.output import print_error, print_info, print_success, print_warning
+from utils.ssh_utils import run_command, run_command_live
 
 def get_local_md5(filepath):
     """计算本地文件的 MD5 哈希值"""
@@ -190,6 +191,56 @@ def upload_file(client, local_path, remote_path):
     except Exception as e:
         print_error(f"上传失败: {e}")
         raise RuntimeError(f"上传失败: {e}")
+
+def remote_url_times_out(client, url, timeout_seconds=10):
+    """检查远程服务器访问下载 URL 是否超时。"""
+    probe_cmd = (
+        "wget --spider --tries=1 "
+        f"--timeout={timeout_seconds} "
+        f"--dns-timeout={timeout_seconds} "
+        f"--connect-timeout={timeout_seconds} "
+        f"--read-timeout={timeout_seconds} "
+        f"{shlex.quote(str(url))}"
+    )
+    output, status = run_command_live(client, probe_cmd)
+    if status == 0:
+        return False
+
+    normalized_output = (output or "").lower()
+    timeout_markers = (
+        "timed out",
+        "connection timeout",
+        "connection timed out",
+        "read timed out",
+        "operation timed out",
+        "超时",
+    )
+    return any(marker in normalized_output for marker in timeout_markers)
+
+def remote_download_or_upload(client, url, local_path, remote_path, wget_cmd=None, failure_message="本地上传也失败，中止安装"):
+    """优先远程下载；若远程访问 URL 超时或下载失败，则本地下载后上传。"""
+    should_try_remote_download = True
+    if remote_url_times_out(client, url):
+        print_warning("服务器连接下载URL超时，跳过服务器端下载，直接本地上传")
+        should_try_remote_download = False
+
+    if should_try_remote_download:
+        if wget_cmd is None:
+            wget_cmd = f"wget -O {shlex.quote(str(remote_path))} {shlex.quote(str(url))}"
+        _, wget_status = run_command_live(client, wget_cmd)
+        if wget_status == 0:
+            return True
+        print_warning("下载失败，尝试本地上传")
+
+    try:
+        download_file(url, local_path)
+        upload_file(client, local_path, remote_path)
+        print_success("本地上传成功")
+        return True
+    except RuntimeError as e:
+        print_error(f"{failure_message}: {e}")
+        print_warning("返回上一级菜单\n")
+        return False
 
 def upload_file_with_vars(client, local_path, remote_path, variables: dict):
     """读取模板文件，替换变量后上传到远程服务器，显示传输进度"""
