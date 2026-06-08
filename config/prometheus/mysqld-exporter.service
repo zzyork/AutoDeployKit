@@ -3,7 +3,8 @@ Description=mysqld-exporter
 Documentation=https://github.com/prometheus/mysqld_exporter
 
 [Service]
-ExecStart=/usr/local/mysqld-exporter/mysqld_exporter --config.my-cnf=/usr/local/mysqld-exporter/mysqld_exporter.conf
+ExecStart=/usr/local/mysqld-exporter/mysqld_exporter --config.my-cnf=/usr/local/mysqld-exporter/mysqld_exporter.conf --web.listen-address=0.0.0.0:${EXPORTER_PORT}
 Restart=on-failure
+RestartSec=5s
 [Install]
 WantedBy=multi-user.target

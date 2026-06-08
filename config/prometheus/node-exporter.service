@@ -1,9 +1,12 @@
 [Unit]
-Description=node-export
+Description=Prometheus Node Exporter
 Documentation=https://github.com/prometheus/node_exporter
  
 [Service]
 ExecStart=/usr/local/node-exporter/node_exporter --web.listen-address 0.0.0.0:${PORT}
 Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+
 [Install]
 WantedBy=multi-user.target
