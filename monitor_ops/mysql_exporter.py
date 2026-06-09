@@ -27,9 +27,8 @@ def install_mysqld_exporter(client):
     if installed_output:
         print_success("mysqld_exporter已安装。")
         print_info(f"当前版本信息: {installed_output.strip()}\n")
-        if not confirm_yes_no("是否继续重新安装/覆盖配置？", default=False):
-            print_warning("→ 已跳过安装")
-            return None
+        print_warning("→ 已跳过安装")
+        return None
 
     print_info("mysqld_exporter最新发行版为：" + stable_version)
     if confirm_yes_no("是否安装？", default=False):
