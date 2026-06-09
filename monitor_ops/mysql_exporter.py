@@ -46,7 +46,7 @@ def install_mysqld_exporter(client):
         cmds = []
         if not install_dir_exists:
             wget_cmd = f"cd /usr/local/src && wget {url}"
-            if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "本地上传失败，中止安装"):
+            if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "远程下载或本地下载均失败，请检查网络连接后重试"):
                 return None
                     
             cmds = [
@@ -56,7 +56,7 @@ def install_mysqld_exporter(client):
 
         cmd_status = 0
         for cmd in cmds:
-            output, cmd_status = run_command_live(client, cmd)
+            _, cmd_status = run_command_live(client, cmd)
             if cmd_status != 0 :
                 print_error(f"\n命令执行失败: {cmd}")
                 print_warning("中止当前操作，返回上一级菜单\n")
