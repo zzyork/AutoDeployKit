@@ -1,6 +1,7 @@
 import os
 import stat
 from colorama import Fore
+from getpass import getpass
 from utils.file_utils import download_file, upload_file, upload_file_with_vars, remote_download_or_upload
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
@@ -62,7 +63,7 @@ def install_minio(client):
             local_path = os.path.join("config", "minio", "minio.conf")
             remote_path = install_path + "/minio.conf"
             minio_username = input(Fore.MAGENTA + f"请输入Minio用户名: ").strip()
-            minio_password = input(Fore.MAGENTA + f"请输入Minio密码: ").strip()
+            minio_password = getpass(Fore.MAGENTA + f"请输入Minio密码: ").strip()
             upload_file_with_vars(client, local_path, remote_path, {'MINIO_DATA_DIR': data_dir, 'MINIO_USERNAME': minio_username, 'MINIO_PASSWORD': minio_password})
             run_command(client, "chown minio:minio " + install_path + "/minio.conf")
             print_success("minio.conf文件配置完成\n")

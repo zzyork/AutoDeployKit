@@ -1,6 +1,6 @@
 import os
 import shlex
-import tempfile
+from getpass import getpass
 from utils.file_utils import upload_file_with_vars, upload_file
 from utils.output import print_info, print_error, print_warning, print_success
 from utils.ssh_utils import run_command, run_command_live
@@ -56,7 +56,7 @@ def install_supervisor(client):
                 username = input("请输入web UI用户名（默认：admin）：").strip()
                 if username == "":
                     username = "admin"
-                password = input("请输入web UI密码（默认：admin）：").strip()
+                password = getpass("请输入web UI密码（默认：admin）：").strip()
                 if password == "":
                     password = "admin"
                 upload_file_with_vars(client, local_path, remote_path,{'INI_PATH': ini_path, 'USERNAME': username, 'PASSWORD': password})
