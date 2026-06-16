@@ -53,8 +53,7 @@ def install_mysql(client, version=None):
             "tar xvf " + remote_path + " -C /usr/local/src/",
             "mv /usr/local/src/mysql-" + version + "-linux-glibc2.28-x86_64 " + install_path,
             "chown -R mysql:mysql " + install_path,
-            "printf '\nPATH=$PATH:" + install_path + "/bin\nexport PATH\n' >> /etc/profile",
-            "source /etc/profile",
+            "printf '\nPATH=$PATH:" + install_path + "/bin\nexport PATH\n' >> /etc/profile"
         ]
 
         cmd_status = 0
@@ -87,7 +86,7 @@ def install_mysql(client, version=None):
                 run_command_live(client, install_path + "/bin/mysqld --initialize --user=mysql")
                 print_success("✓ MySQL服务初始化完成")
                 print_info("注意: 初始化完成后会生成临时密码，请查看日志文件获取密码")
-                print_info("日志位置: " + data_dir + "/error.log\n")
+                print_info("日志位置: " + log_dir + "/error.log\n")
             else:
                 print_warning("→ 已跳过MySQL服务初始化")
 
@@ -472,54 +471,67 @@ def manage_mysql(client):
     global current_version, status, lts_version
     current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
+    lts_version = ""
     try:
-        status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
+        version_status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
     except Exception:
-        status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", "8.0.")
-    if status == 0:
+        version_status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", "8.0.")
+    if version_status == 0:
         lts_version = info
         print_info("Mysql最新LTS版本为：" + lts_version)
     else:
         print_error(info)
-        return
+        print_warning("未能自动获取Mysql最新LTS版本，请手动指定要安装的版本号")
     while True:
         print("========== Mysql软件管理 ==========")
         if status != 0 or not current_version or current_version == "":
-            print("1. 安装 Mysql 8.0 最新LTS版本")
+            if lts_version:
+                print("1. 安装 Mysql 8.0 最新LTS版本")
             print("2. 安装其他版本的 Mysql （手动指定版本号）")
             print("0. 返回/跳过")
-            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '0'], default="0")
+            valid_choices = ['1', '2', '0'] if lts_version else ['2', '0']
+            choice = menu_choice("请选择操作编号: ", valid_choices=valid_choices, default="2" if not lts_version else "0")
             if choice == "1":
                 install_mysql(client, version=lts_version)
             elif choice == "2":
-                while True:
-                    input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.33): ").strip()
-                    try:
-                        status, info = get_stable_version("https://downloads.mysql.com/archives/community/", input_version)
-                    except Exception:
-                        status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", input_version)
-                    if status == 0:
-                        version = info
-                        break
-                    else:
-                        print_error(info)
+                if lts_version:
+                    while True:
+                        input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.33): ").strip()
+                        try:
+                            status, info = get_stable_version("https://downloads.mysql.com/archives/community/", input_version)
+                        except Exception:
+                            status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", input_version)
+                        if status == 0:
+                            version = info
+                            break
+                        else:
+                            print_error(info)
+                else:
+                    while True:
+                        input_version = input(Fore.MAGENTA + "请输入完整Mysql版本号 (例如 8.0.33): ").strip()
+                        if input_version:
+                            version = input_version
+                            break
+                        print_error("Mysql版本号不能为空")
                 eol = get_eol_date("mysql", version)
                 if eol != "Unknown":
                     print_warning(f"注意: {eol}")
-                install_mysql(client, version=input_version)
+                install_mysql(client, version=version)
             elif choice == "0":
                 break
             else:
                 print("无效选项，请重新输入")
         else:
             print_success("当前Mysql版本：" + current_version)
-            print_info("Mysql最新LTS版本为：" + lts_version)
-            print("1. 升级 Mysql 到最新LTS版本")
+            if lts_version:
+                print_info("Mysql最新LTS版本为：" + lts_version)
+                print("1. 升级 Mysql 到最新LTS版本")
             print("2. 备份当前 Mysql 版本")
             print("3. 回滚 Mysql 到之前版本")
             print("4. 查看所有备份")
             print("0. 返回/跳过")
-            choice = menu_choice("请选择操作编号: ", valid_choices=['1', '2', '3', '4', '0'], default="0")
+            valid_choices = ['1', '2', '3', '4', '0'] if lts_version else ['2', '3', '4', '0']
+            choice = menu_choice("请选择操作编号: ", valid_choices=valid_choices, default="0")
             if choice == "1":
                 upgrade_mysql8(client)
             elif choice == "2":
