@@ -4,7 +4,7 @@ import datetime
 import shlex
 import posixpath
 from colorama import Fore
-from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date, remote_download_or_upload
+from utils.file_utils import upload_file_with_vars, get_stable_version, get_eol_date, remote_download_or_upload
 from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
@@ -124,12 +124,12 @@ def install_nginx(client, version=None):
         print_info("开始安装Nginx " + version + "......\n")
 
         print_info("创建nginx用户")
-        output, status = run_command_live(client, "getent group nginx || groupadd nginx")
-        output, status = run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
+        run_command_live(client, "getent group nginx || groupadd nginx")
+        run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
         print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")
-        output, status = run_command_live(client, 'dnf -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel')
+        run_command_live(client, 'dnf -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel openssl-devel')
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
@@ -413,7 +413,7 @@ def rollback_nginx(client):
     print_info("查找可用的nginx备份...")
     
     # 查找备份目录
-    output, error, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
+    output, _, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
     if status != 0 or not output.strip():
         print_warning("未找到任何nginx备份")
         return
@@ -423,7 +423,7 @@ def rollback_nginx(client):
     for i, backup_dir in enumerate(backup_dirs, 1):
         # 读取备份信息
         info_file = f"{backup_dir}/backup_info.json"
-        output, error, status = run_command(client, f'cat {info_file} 2>/dev/null')
+        output, _, status = run_command(client, f'cat {info_file} 2>/dev/null')
         if status == 0:
             try:
                 backup_info = json.loads(output)
@@ -443,7 +443,7 @@ def rollback_nginx(client):
     
     # 读取备份信息
     info_file = f"{selected_backup}/backup_info.json"
-    output, error, status = run_command(client, f'cat {info_file}')
+    output, _, status = run_command(client, f'cat {info_file}')
     if status != 0:
         print_error("无法读取备份信息文件")
         return
@@ -488,7 +488,7 @@ def rollback_nginx(client):
         for config_file in backup_info['config_files']:
             rel_path = config_file.replace('/usr/local/', '')
             backup_config_path = f"{selected_backup}/conf_{posixpath.basename(str(rel_path).strip().replace('\\', '/'))}"
-            output, error, status = run_command(client, f'cp -a {shlex.quote(str(backup_config_path))} {shlex.quote(str(config_file))}')
+            output, _, status = run_command(client, f'cp -a {shlex.quote(str(backup_config_path))} {shlex.quote(str(config_file))}')
             if status != 0:
                 print_error(f"恢复配置文件失败: {config_file}")
                 return
@@ -496,13 +496,13 @@ def rollback_nginx(client):
     # 恢复systemd服务文件
     if backup_info.get('systemd_service'):
         print_info("恢复systemd服务文件...")
-        output, error, status = run_command(client, f'cp -a {shlex.quote(str(selected_backup))}/nginx.service /etc/systemd/system/')
+        output, _, status = run_command(client, f'cp -a {shlex.quote(str(selected_backup))}/nginx.service /etc/systemd/system/')
         if status == 0:
-            output, error, status = run_command(client, 'systemctl daemon-reload')
+            output, _, status = run_command(client, 'systemctl daemon-reload')
     
     # 验证回滚
     print_info("验证回滚结果...")
-    output, error, status = run_command(client, NGINX_VERSION_CMD)
+    output, _, status = run_command(client, NGINX_VERSION_CMD)
     if status == 0:
         rolled_back_version = output.strip()
         if rolled_back_version == backup_info['version']:
@@ -525,7 +525,7 @@ def rollback_nginx(client):
 def list_nginx_backups(client):
     print_info("查找nginx备份...")
     
-    output, error, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
+    output, _, status = run_command(client, "find /data/backups -maxdepth 1 -type d -name 'nginx_backup_*' 2>/dev/null | sort -r")
     if status != 0 or not output.strip():
         print_warning("未找到任何nginx备份")
         return
@@ -535,7 +535,7 @@ def list_nginx_backups(client):
     
     for i, backup_dir in enumerate(backup_dirs, 1):
         info_file = f"{backup_dir}/backup_info.json"
-        output, error, status = run_command(client, f'cat {info_file} 2>/dev/null')
+        output, _, status = run_command(client, f'cat {info_file} 2>/dev/null')
         if status == 0:
             try:
                 backup_info = json.loads(output)
