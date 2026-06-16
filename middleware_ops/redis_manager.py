@@ -8,6 +8,10 @@ from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
 
 def install_redis(client, version=None):
+    if not version:
+        print_error("未获取到 Redis 版本号，无法继续安装")
+        return None
+
     print_info("Redis最新发行版为：" + version)
     if confirm_yes_no("是否确定安装？", default=False):
         # 提示输入Redis安装目录
@@ -16,28 +20,32 @@ def install_redis(client, version=None):
         if not install_path:
             install_path = default_install_path
         print_info("Redis将安装到: " + install_path)
-        
-        # 提示输入日志目录
-        default_log_dir = "/data/logs/redis"
-        log_dir = input(Fore.MAGENTA + f"请输入Redis日志目录 (默认: {default_log_dir}): ").strip()
+
+        default_log_dir = "/var/log/redis/redis-server.log"
+        log_dir = input(Fore.MAGENTA + f"请输入Redis日志位置 (默认: {default_log_dir}): ").strip()
         if not log_dir:
             log_dir = default_log_dir
         print_info("Redis日志目录: " + log_dir + "\n")
+
+        default_data_dir = "/data/redis/"
+        data_dir = input(Fore.MAGENTA + f"请输入Redis数据目录 (默认: {default_data_dir}): ").strip()
+        if not data_dir:
+            data_dir = default_data_dir
+        print_info("Redis数据目录: " + data_dir + "\n")
         
         print_info("开始安装Redis " + version + "......\n")
 
-        print_info("创建redis用户")
-        output, status = run_command_live(client, "getent group redis || groupadd redis")
-        output, status = run_command_live(client, "id redis &>/dev/null || useradd -r -g redis redis")
-        print_success("创建redis用户完成。\n")
+        print_info("创建redis用户和用户组")
+        run_command_live(client, 'getent group redis || groupadd -r redis')
+        run_command_live(client, 'id -u redis &>/dev/null || useradd -r -g redis redis')
 
         print_info("安装依赖")
-        output, status = run_command_live(client, 'dnf -y install make zlib zlib-devel gcc-c++ libtool pcre2-devel')
+        run_command_live(client, 'dnf -y install -y gcc')
         print_success("perl安装完成。\n")
 
         print_info("开始下载源码包并编译安装")
         local_path = os.path.join("packages", "redis-" + version + ".tar.gz")
-        url = "https://redis.org/download/redis-" + version + ".tar.gz"
+        url = "http://download.redis.io/releases/redis-" + version + ".tar.gz"
         remote_path = "/usr/local/src/redis-" + version + ".tar.gz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
@@ -45,10 +53,9 @@ def install_redis(client, version=None):
             return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
-            "cd /usr/local/src/redis-" + version + " && ./configure --prefix=" + install_path + " --with-http_stub_status_module --with-http_gzip_static_module --with-http_realip_module --with-http_sub_module --with-http_ssl_module --with-http_v2_module --with-stream",
-            "cd /usr/local/src/redis-" + version + " && make && make install",
-            "ln -fs " + install_path + "/sbin/redis /usr/bin/redis",
-            "mkdir -p " + install_path + "/conf/conf.d",
+            "cd /usr/local/src/redis-" + version + " && make && make install PREFIX=" + install_path,
+            "mkdir -p " + data_dir + " && chown redis:redis " + data_dir,
+            "mkdir -p " + log_dir.rsplit('/', 1)[0] + " && chown redis:redis " + log_dir.rsplit('/', 1)[0],
         ]
 
         cmd_status = 0
@@ -60,7 +67,7 @@ def install_redis(client, version=None):
                 break
 
         if cmd_status == 0:
-            current_version,_, _ = run_command(client, 'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+            current_version,_, _ = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
             current_version = current_version.strip() if current_version else ""
             print_info("安装完成！当前redis版本：" + current_version)
             if confirm_yes_no("是否自动调整redis.conf文件？", default=False):
@@ -97,7 +104,7 @@ def backup_redis(client):
     print_info("开始备份当前redis安装...")
     
     # 获取当前版本信息
-    output, error, status = run_command(client, "redis-cli -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1")
+    output, error, status = run_command(client, r"redis-cli -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1")
     if status != 0:
         print_error("无法获取当前redis版本信息")
         return None
@@ -283,7 +290,7 @@ def rollback_redis(client):
     
     # 验证回滚
     print_info("验证回滚结果...")
-    output, error, status = run_command(client, "redis-cli -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1")
+    output, error, status = run_command(client, r"redis-cli -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1")
     if status == 0:
         rolled_back_version = output.strip()
         if rolled_back_version == backup_info['version']:
@@ -332,9 +339,9 @@ def list_redis_backups(client):
 
 def manage_redis(client):
     global current_version, status, stable_version
-    current_version, _, status = run_command(client, 'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+    current_version, _, status = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
-    status, info = get_stable_version("http://download.redis.io/releases/", "7.")
+    status, info = get_stable_version("http://download.redis.io/releases/", "7.4")
     if status == 0:
         stable_version = info
     else:
@@ -349,7 +356,7 @@ def manage_redis(client):
             print("0. 返回/跳过")
             choice = menu_choice("请选择操作编号: ", valid_choices=['1', '0'], default="0")
             if choice == "1":
-                install_redis(client)
+                install_redis(client, stable_version)
             elif choice == "0":
                 break
             else:

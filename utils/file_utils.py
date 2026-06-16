@@ -362,8 +362,8 @@ def get_stable_version(url: str, prefix: str = "") -> tuple[int, str]:
         candidates = set()
         patterns = [
             r"(?<![\w.])jdk(8u\d+-b\d+)(?![\w.])",
-            r"(?<![\w.])v?(\d+\.\d+\.\d+\+\d+)(?![\w.])",
-            r"(?<![\w.])v?(\d+\.\d+\.\d+(?:p\d+)?[a-z]?)(?![\w.])",
+            r"(?<![\w.])v?(\d+\.\d+\.\d+\+\d+)(?=$|[^\w.]|\.(?:tar|tgz|zip|gz|xz|bz2)\b)",
+            r"(?<![\w.])v?(\d+\.\d+\.\d+(?:p\d+)?[a-z]?)(?=$|[^\w.]|\.(?:tar|tgz|zip|gz|xz|bz2)\b)",
             r"(?<![\w.])v?(\d+\.\d+(?:p\d+)?[a-z]?)(?![\w.])",
             r"(?<![\w])v?(\d+_\d+_\d+[a-z]?)(?![\w])",
         ]
