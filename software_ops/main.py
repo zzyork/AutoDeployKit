@@ -1,4 +1,5 @@
 from .docker_manager import manage_docker
+from .jdk_manager import manage_jdk
 from .minio_manager import manage_minio
 from .supervisor_manager import manage_supervisor
 from utils.menu_runner import run_menu
@@ -8,6 +9,7 @@ operations = {
     "1": ("Docker管理", manage_docker),
     "2": ("Minio管理", manage_minio),
     "3": ("Supervisor管理", manage_supervisor),
+    "4": ("JDK管理", manage_jdk),
 }
 
 def run(clients):
