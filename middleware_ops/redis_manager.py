@@ -1,6 +1,11 @@
 import os
 import json
 import datetime
+import re
+import shlex
+import tempfile
+from getpass import getpass
+
 from colorama import Fore
 from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, remote_download_or_upload
 from utils.output import print_info, print_error, print_success, print_warning
@@ -21,17 +26,23 @@ def install_redis(client, version=None):
             install_path = default_install_path
         print_info("Redis将安装到: " + install_path)
 
-        default_log_dir = "/var/log/redis/redis-server.log"
-        log_dir = input(Fore.MAGENTA + f"请输入Redis日志位置 (默认: {default_log_dir}): ").strip()
-        if not log_dir:
-            log_dir = default_log_dir
-        print_info("Redis日志目录: " + log_dir + "\n")
+        default_log_file = "/var/log/redis/redis-server.log"
+        log_file = input(Fore.MAGENTA + f"请输入Redis日志文件 (默认: {default_log_file}): ").strip()
+        if not log_file:
+            log_file = default_log_file
+        log_parent_dir = log_file.rstrip("/").rsplit("/", 1)[0] or "/"
+        print_info("Redis日志文件: " + log_file + "\n")
 
         default_data_dir = "/data/redis/"
         data_dir = input(Fore.MAGENTA + f"请输入Redis数据目录 (默认: {default_data_dir}): ").strip()
         if not data_dir:
             data_dir = default_data_dir
         print_info("Redis数据目录: " + data_dir + "\n")
+
+        redis_password = getpass(Fore.MAGENTA + "请输入Redis密码：").strip()
+        while not redis_password:
+            print_error("Redis密码不能为空！")
+            redis_password = getpass(Fore.MAGENTA + "请输入Redis密码：").strip()
         
         print_info("开始安装Redis " + version + "......\n")
 
@@ -51,11 +62,20 @@ def install_redis(client, version=None):
         wget_cmd = f"cd /usr/local/src && wget {url}"
         if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
             return None
+
+        source_dir = "/usr/local/src/redis-" + version
+        config_dir = install_path.rstrip("/") + "/conf"
+        config_path = config_dir + "/redis.conf"
+
         cmds = [
-            "tar zxf " + remote_path + " -C /usr/local/src/",
-            "cd /usr/local/src/redis-" + version + " && make && make install PREFIX=" + install_path,
-            "mkdir -p " + data_dir + " && chown redis:redis " + data_dir,
-            "mkdir -p " + log_dir.rsplit('/', 1)[0] + " && chown redis:redis " + log_dir.rsplit('/', 1)[0],
+            "tar zxf " + shlex.quote(remote_path) + " -C /usr/local/src/",
+            "cd " + shlex.quote(source_dir) + " && make && make install PREFIX=" + shlex.quote(install_path),
+            "ln -fs " + shlex.quote(install_path.rstrip("/") + "/bin/redis-server") + " /usr/bin/redis-server",
+            "ln -fs " + shlex.quote(install_path.rstrip("/") + "/bin/redis-cli") + " /usr/bin/redis-cli",
+            "mkdir -p " + shlex.quote(config_dir),
+            "cp " + shlex.quote(source_dir + "/redis.conf") + " " + shlex.quote(config_path),
+            "mkdir -p " + shlex.quote(data_dir) + " && chown redis:redis " + shlex.quote(data_dir),
+            "mkdir -p " + shlex.quote(log_parent_dir) + " && chown redis:redis " + shlex.quote(log_parent_dir),
         ]
 
         cmd_status = 0
@@ -67,23 +87,57 @@ def install_redis(client, version=None):
                 break
 
         if cmd_status == 0:
+            redis_config, config_error, config_status = run_command(client, "cat " + shlex.quote(config_path))
+            if config_status != 0 or not redis_config:
+                print_error("读取redis.conf失败: " + (config_error or config_path))
+                return None
+
+            config_items = [
+                ("bind", "0.0.0.0"),
+                ("protected-mode", "no"),
+                ("logfile", log_file),
+                ("dir", data_dir.rstrip("/")),
+                ("requirepass", redis_password),
+            ]
+            for key, value in config_items:
+                pattern = r"(?m)^\s*#?\s*" + re.escape(key) + r"\s+.*$"
+                replacement = key + " " + value
+                redis_config, replace_count = re.subn(pattern, lambda _: replacement, redis_config, count=1)
+                if replace_count == 0:
+                    redis_config = redis_config.rstrip() + "\n" + replacement + "\n"
+
+            tmpfile_path = None
+            try:
+                with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", newline="\n") as tmpfile:
+                    tmpfile.write(redis_config.rstrip() + "\n")
+                    tmpfile_path = tmpfile.name
+                upload_file(client, tmpfile_path, config_path)
+            except Exception as e:
+                print_error("redis.conf配置失败: " + str(e))
+                return None
+            finally:
+                if tmpfile_path:
+                    try:
+                        os.remove(tmpfile_path)
+                    except Exception:
+                        pass
+
+            _, config_chown_error, config_chown_status = run_command(client, "chown redis:redis " + shlex.quote(config_path))
+            if config_chown_status != 0:
+                print_warning("redis.conf属主调整失败: " + (config_chown_error or config_path))
+            print_success("✓ redis.conf配置完成: " + config_path + "\n")
+
             current_version,_, _ = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
             current_version = current_version.strip() if current_version else ""
             print_info("安装完成！当前redis版本：" + current_version)
-            if confirm_yes_no("是否自动调整redis.conf文件？", default=False):
-                local_path = os.path.join("config", "redis", "redis.conf")
-                remote_path = install_path + "/conf/redis.conf"
-                upload_file_with_vars(client, local_path, remote_path, {'NGINX_INSTALL_PATH': install_path, 'NGINX_LOG_DIR': log_dir})
-                print_success("✓ redis.conf配置完成\n")
             if confirm_yes_no("\n是否配置systemd守护进程？", default=False):
                 local_path = os.path.join("config", "redis", "redis.service")
                 remote_path = "/etc/systemd/system/redis.service"
-                upload_file_with_vars(client, local_path, remote_path, {'install_path': install_path})
+                upload_file_with_vars(client, local_path, remote_path, {'install_path': install_path, 'config_path': config_path})
                 
                 # 执行systemd相关命令
                 systemd_cmds = [
                     "systemctl daemon-reload",
-                    f"mkdir -p {log_dir}",
                     "systemctl enable --now redis",
                 ]
                 for cmd in systemd_cmds:

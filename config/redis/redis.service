@@ -1,0 +1,16 @@
+[Unit]
+Description=Redis
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=redis
+Group=redis
+ExecStart=${install_path}/bin/redis-server ${config_path}
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=${install_path}/bin/redis-cli -p 6379 -a ${redis_password} shutdown
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
