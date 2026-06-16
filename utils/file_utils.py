@@ -4,6 +4,7 @@ import shlex
 import sys
 import tempfile
 import time
+import uuid
 from string import Template
 import hashlib
 import difflib
@@ -124,18 +125,20 @@ def upload_file(client, local_path, remote_path):
     file_size = os.path.getsize(local_path)
     filename = os.path.basename(local_path)
     
+    remote_tmp_path = _build_remote_tmp_path(remote_path)
+    
     # 检查远程文件是否已存在
     try:
         sftp = client.open_sftp()
         try:
             remote_stat = sftp.stat(remote_path)
             remote_size = remote_stat.st_size
-            
+
             if remote_size == file_size:
                 sftp.close()
                 print_info(f"远程文件已存在且大小相同，跳过上传: {remote_path}")
                 return
-                
+
         except FileNotFoundError:
             # 远程文件不存在，需要上传
             pass
@@ -144,7 +147,7 @@ def upload_file(client, local_path, remote_path):
     except Exception as e:
         print_error(f"检查远程文件失败: {e}")
         # 继续上传流程
-    
+
     print_info(f"开始上传: {filename} ({file_size / 1024 / 1024:.2f} MB) -> {remote_path}")
     
     uploaded = 0
@@ -171,8 +174,13 @@ def upload_file(client, local_path, remote_path):
     
     try:
         sftp = client.open_sftp()
-        sftp.put(local_path, remote_path, callback=progress_callback)
+        sftp.put(local_path, remote_tmp_path, callback=progress_callback)
         sftp.close()
+
+        copy_command = f"cp -f {shlex.quote(remote_tmp_path)} {shlex.quote(remote_path)}"
+        copy_output, copy_err, copy_status = run_command(client, copy_command)
+        if copy_status != 0:
+            raise RuntimeError(copy_err or copy_output or f"cp 失败: {remote_tmp_path} -> {remote_path}")
         
         # 显示最终进度
         end_ts = time.time()
@@ -258,76 +266,7 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
         tmpfile_path = tmpfile.name
 
     try:
-        # 4. 上传临时文件（使用带进度显示的upload_file）
-        # 直接调用SFTP上传以避免递归调用
-        if not os.path.exists(tmpfile_path):
-            print_error(f"临时文件不存在: {tmpfile_path}")
-            raise RuntimeError(f"临时文件不存在: {tmpfile_path}")
-        
-        file_size = os.path.getsize(tmpfile_path)
-        filename = os.path.basename(remote_path)
-        
-        # 检查远程文件是否已存在
-        try:
-            sftp = client.open_sftp()
-            try:
-                remote_stat = sftp.stat(remote_path)
-                remote_size = remote_stat.st_size
-                
-                if remote_size == file_size:
-                    sftp.close()
-                    print_info(f"远程配置文件已存在且大小相同，跳过上传: {remote_path}")
-                    return
-                    
-            except FileNotFoundError:
-                # 远程文件不存在，需要上传
-                pass
-            finally:
-                sftp.close()
-        except Exception as e:
-            print_error(f"检查远程配置文件失败: {e}")
-            # 继续上传流程
-        
-        print_info(f"开始上传配置文件: {filename} ({file_size / 1024:.2f} KB) -> {remote_path}")
-        
-        uploaded = 0
-        last_print_ts = 0.0
-        start_ts = time.time()
-        
-        def progress_callback(transferred, total):
-            nonlocal uploaded, last_print_ts
-            uploaded = transferred
-            now_ts = time.time()
-            
-            if now_ts - last_print_ts >= 0.2:
-                elapsed = max(now_ts - start_ts, 1e-6)
-                speed = transferred / elapsed
-                percent = (transferred * 100.0 / total) if total > 0 else 0
-                
-                sys.stdout.write(
-                    f"\rUploading {filename}: {percent:6.2f}% "
-                    f"({transferred / 1024:.2f}/{total / 1024:.2f} KB) "
-                    f"{speed / 1024:.2f} KB/s"
-                )
-                sys.stdout.flush()
-                last_print_ts = now_ts
-        
-        sftp = client.open_sftp()
-        sftp.put(tmpfile_path, remote_path, callback=progress_callback)
-        sftp.close()
-        
-        # 显示最终进度
-        end_ts = time.time()
-        elapsed = max(end_ts - start_ts, 1e-6)
-        speed = uploaded / elapsed
-        
-        sys.stdout.write(
-            f"\rUploading {filename}: {100.00:6.2f}% "
-            f"({uploaded / 1024:.2f}/{file_size / 1024:.2f} KB) "
-            f"{speed / 1024:.2f} KB/s\n"
-        )
-        sys.stdout.flush()
-        
+        upload_file(client, tmpfile_path, remote_path)
         print_info(f"配置文件上传完成: {remote_path}")
         
     except Exception as e:
@@ -339,6 +278,11 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
             os.remove(tmpfile_path)
         except Exception:
             pass
+
+
+def _build_remote_tmp_path(remote_path):
+    remote_name = os.path.basename(remote_path) or "upload.tmp"
+    return f"/tmp/{remote_name}.upload.{os.getpid()}.{uuid.uuid4().hex}"
 
 def compare_file_content(client, filepath, remote_path):
     """比较本地文件和远程文件的内容差异，返回远程文件相对于本地文件多出来或缺少的内容"""

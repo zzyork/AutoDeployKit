@@ -1,4 +1,5 @@
 import paramiko
+import shlex
 import time
 
 
@@ -108,6 +109,7 @@ def ssh_connect(
             port=port,
         )
 
+    client._login_user = user  # noqa: SLF001
     return client
 
 
@@ -143,8 +145,7 @@ def close_ssh_client(client):
 
 def run_command(client, command):
     """执行远程命令，加载环境变量"""
-    # 先加载环境变量，再执行命令
-    full_command = f"source /etc/profile; {command}"
+    full_command = _build_remote_command(client, command)
     stdin, stdout, stderr = client.exec_command(full_command)
     out = stdout.read().decode().strip()
     err = stderr.read().decode().strip()
@@ -154,8 +155,7 @@ def run_command(client, command):
 
 def run_command_live(client, command):
     """执行远程命令并实时显示输出，加载环境变量"""
-    # 先加载环境变量，再执行命令
-    full_command = f"source /etc/profile; {command}"
+    full_command = _build_remote_command(client, command)
     print(f"\n>> 正在远程执行: {command}\n")
 
     transport = client.get_transport()
@@ -179,3 +179,13 @@ def run_command_live(client, command):
 
     exit_status = channel.recv_exit_status()
     return output, exit_status
+
+
+def _build_remote_command(client, command):
+    """根据登录用户决定是否使用 sudo su 提权执行。"""
+    base_command = f"source /etc/profile; {command}"
+    login_user = getattr(client, "_login_user", None)
+    if isinstance(login_user, str) and login_user.strip().lower() != "root":
+        root_command = f"bash -lc {shlex.quote(base_command)}"
+        return f"sudo su - root -c {shlex.quote(root_command)}"
+    return base_command
