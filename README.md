@@ -36,20 +36,23 @@
 
 - Nginx 管理
 - MySQL 管理
+- Redis 管理
 
-> 仓库中虽然存在 `redis_manager.py`、`rabbitmq_manager.py`，但当前 `middleware_ops/main.py` 未注册这两个入口，因此不属于当前 CLI 可直接使用的模块。
+> 仓库中虽然存在 `rabbitmq_manager.py`，但当前 `middleware_ops/main.py` 未注册该入口，因此不属于当前 CLI 可直接使用的模块。
 
 ### 3. 软件管理 `software_ops`
 
 - Docker 管理
 - Minio 管理
 - Supervisor 管理
+- JDK 管理
 
 ### 4. 监控管理 `monitor_ops`
 
 - Prometheus 安装
 - mysqld_exporter 安装
 - node_exporter 安装
+- redis_exporter 安装
 
 ### 5. 服务器巡检 `server_check`
 
@@ -90,18 +93,20 @@
 │  ├─ main.py
 │  ├─ nginx_manager.py
 │  ├─ mysql_manager.py
-│  ├─ redis_manager.py         # 文件存在，但未在菜单中启用
+│  ├─ redis_manager.py
 │  └─ rabbitmq_manager.py      # 文件存在，但未在菜单中启用
 ├─ software_ops/
 │  ├─ main.py
 │  ├─ docker_manager.py
+│  ├─ jdk_manager.py
 │  ├─ minio_manager.py
 │  └─ supervisor_manager.py
 ├─ monitor_ops/
 │  ├─ main.py
 │  ├─ prometheus_monitor.py
 │  ├─ mysql_exporter.py
-│  └─ node_exporter.py
+│  ├─ node_exporter.py
+│  └─ redis_exporter.py
 ├─ server_check/
 │  └─ main.py
 ├─ scripts/
@@ -213,12 +218,12 @@ python cli.py server_check webservers
 
 ## 巡检报告说明
 
-执行 `server_check` 时，程序会提示选择或输入报告目录。
+执行 `server_check` 时，程序会提示选择或输入报告目录，也可通过 `SERVER_CHECK_REPORT_DIR` 指定。
 
-- 默认目录：`server_check/reports`
+- 默认目录：`server_check/reporters`
 - 输出形式：按 `组名 / 月份 / 主机报告.md` 归档
 
-并发数量由环境变量 `MAX_WORKERS` 控制，运行巡检前请先设置，例如：`MAX_WORKERS=5`。
+并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
 
 ---
 

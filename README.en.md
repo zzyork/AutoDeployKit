@@ -36,20 +36,23 @@ Currently wired into the menu:
 
 - Nginx management
 - MySQL management
+- Redis management
 
-> Although `redis_manager.py` and `rabbitmq_manager.py` exist in the repository, they are not registered in `middleware_ops/main.py`, so they are not currently available from the CLI menu.
+> Although `rabbitmq_manager.py` exists in the repository, it is not registered in `middleware_ops/main.py`, so it is not currently available from the CLI menu.
 
 ### 3. Software Management `software_ops`
 
 - Docker management
 - Minio management
 - Supervisor management
+- JDK management
 
 ### 4. Monitoring Management `monitor_ops`
 
 - Prometheus installation
 - mysqld_exporter installation
 - node_exporter installation
+- redis_exporter installation
 
 ### 5. Server Inspection `server_check`
 
@@ -90,18 +93,20 @@ Currently wired into the menu:
 │  ├─ main.py
 │  ├─ nginx_manager.py
 │  ├─ mysql_manager.py
-│  ├─ redis_manager.py         # Present but not enabled in menu
+│  ├─ redis_manager.py
 │  └─ rabbitmq_manager.py      # Present but not enabled in menu
 ├─ software_ops/
 │  ├─ main.py
 │  ├─ docker_manager.py
+│  ├─ jdk_manager.py
 │  ├─ minio_manager.py
 │  └─ supervisor_manager.py
 ├─ monitor_ops/
 │  ├─ main.py
 │  ├─ prometheus_monitor.py
 │  ├─ mysql_exporter.py
-│  └─ node_exporter.py
+│  ├─ node_exporter.py
+│  └─ redis_exporter.py
 ├─ server_check/
 │  └─ main.py
 ├─ scripts/
@@ -213,12 +218,12 @@ python cli.py server_check webservers
 
 ## Inspection Report Notes
 
-When running `server_check`, the program prompts for a report output directory.
+When running `server_check`, the program prompts for a report output directory. You can also set `SERVER_CHECK_REPORT_DIR`.
 
-- Default directory: `server_check/reports`
+- Default directory: `server_check/reporters`
 - Output layout: `group / month / host_report.md`
 
-Concurrency is controlled by the `MAX_WORKERS` environment variable. Set it before running inspection, for example: `MAX_WORKERS=5`.
+Concurrency is controlled by the `MAX_WORKERS` environment variable. If unset, it defaults to at most 5 workers.
 
 ---
 
