@@ -496,7 +496,7 @@ def manage_mysql(client):
             elif choice == "2":
                 if lts_version:
                     while True:
-                        input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.33): ").strip()
+                        input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.46): ").strip()
                         try:
                             status, info = get_stable_version("https://downloads.mysql.com/archives/community/", input_version)
                         except Exception:
@@ -508,7 +508,7 @@ def manage_mysql(client):
                             print_error(info)
                 else:
                     while True:
-                        input_version = input(Fore.MAGENTA + "请输入完整Mysql版本号 (例如 8.0.33): ").strip()
+                        input_version = input(Fore.MAGENTA + "请输入完整Mysql版本号 (例如 8.0.46): ").strip()
                         if input_version:
                             version = input_version
                             break
