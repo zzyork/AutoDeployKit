@@ -70,7 +70,7 @@
 .
 ├─ cli.py                      # 主 CLI 入口
 ├─ hosts.example               # 主机清单示例
-├─ requirements.txt            # Python 依赖
+├─ pyproject.toml              # Python 项目与依赖配置
 ├─ config/                     # 服务模板与配置文件
 │  ├─ docker/
 │  ├─ linux/
@@ -129,10 +129,10 @@
 - 目标主机具备 root 或 sudo 权限
 - 目标系统建议为 RHEL 系发行版
 
-安装依赖：
+安装项目与依赖：
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ---

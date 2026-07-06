@@ -1,26 +1,21 @@
 [project]
-name = "keystone-coach-api"
+name = "autodeploykit"
 version = "0.1.0"
-description = "Keystone Coach backend (Python + FastAPI)"
-requires-python = ">=3.12,<3.13"
+description = "Interactive SSH automation toolkit for Linux server operations"
+requires-python = ">=3.9"
 readme = "README.md"
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30",
-    "alembic>=1.14",
-    "pydantic>=2.10",
-    "pydantic-settings>=2.7",
-    "httpx>=0.28",
-    "gql[httpx]>=3.5",
-    "openai>=1.60",
-    "upstash-redis>=1.2",
-    "upstash-ratelimit>=1.1",
-    "structlog>=24.4",
-    "python-jose[cryptography]>=3.3",
-    "tenacity>=9.0",
+    "pip~=26.1.2",
+    "typer~=0.16.0",
+    "rich~=14.0.0",
+    "paramiko~=3.5.1",
+    "colorama~=0.4.6",
+    "requests~=2.32.4",
+    "packaging~=25.0",
 ]
+
+[project.scripts]
+autodeploykit = "cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -33,7 +28,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = [
+    "middleware_ops",
+    "monitor_ops",
+    "server_check",
+    "server_ops",
+    "software_ops",
+    "utils",
+]
+include = ["cli.py"]
 
 [tool.ruff]
 # Public Python standards enforced here:
@@ -41,8 +44,15 @@ packages = ["app"]
 # - PEP 484/526: type-hint friendly code; mypy is the type checker
 # - PEP 621: project metadata lives in this pyproject.toml
 line-length = 100
-target-version = "py312"
-src = ["app", "alembic"]
+target-version = "py39"
+src = [
+    "middleware_ops",
+    "monitor_ops",
+    "server_check",
+    "server_ops",
+    "software_ops",
+    "utils",
+]
 extend-exclude = [".venv", ".mypy_cache", ".ruff_cache"]
 
 [tool.ruff.format]
@@ -78,7 +88,14 @@ ignore = [
 fixable = ["ALL"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = [
+    "middleware_ops",
+    "monitor_ops",
+    "server_check",
+    "server_ops",
+    "software_ops",
+    "utils",
+]
 
 [tool.ruff.lint.pydocstyle]
 # PEP 257 docstring convention. D rules are not selected yet because the
@@ -86,9 +103,16 @@ known-first-party = ["app"]
 convention = "pep257"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.9"
 strict = true
-files = ["app", "alembic"]
+files = [
+    "middleware_ops",
+    "monitor_ops",
+    "server_check",
+    "server_ops",
+    "software_ops",
+    "utils",
+    "cli.py",
+]
 show_error_codes = true
 pretty = true
-plugins = ["pydantic.mypy"]

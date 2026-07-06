@@ -70,7 +70,7 @@ Currently wired into the menu:
 .
 ├─ cli.py                      # Main CLI entry
 ├─ hosts.example               # Example hosts inventory
-├─ requirements.txt            # Python dependencies
+├─ pyproject.toml              # Python project and dependency config
 ├─ config/                     # Templates and config files
 │  ├─ docker/
 │  ├─ linux/
@@ -129,10 +129,10 @@ Currently wired into the menu:
 - root or sudo privileges on target hosts
 - RHEL-family distributions are recommended
 
-Install dependencies:
+Install the project and dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ---
