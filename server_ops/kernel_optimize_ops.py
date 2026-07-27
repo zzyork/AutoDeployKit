@@ -53,7 +53,7 @@ def check_and_optimize_limits(client):
             print_warning(f"跳过设置 {limit_type}")
 
 def check_and_optimize_sysctl(client):
-    print_info("\n检查 /etc/sysctl.conf 系统参数配置 ...")
+    print_info("检查 /etc/sysctl.conf 系统参数配置 ...")
 
     # 读取本地模板
     local_path = os.path.join("config", "linux", "sysctl.conf")
