@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>接口监控大屏</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #07182e;
+            color: white;
+            font-family: "Microsoft YaHei";
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .panel {
+            width: 600px;
+            padding: 60px;
+            text-align: center;
+            background: #0c2747;
+            border-radius: 12px;
+        }
+
+        .title {
+            font-size: 32px;
+            margin-bottom: 50px;
+        }
+
+        .status {
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        .normal {
+            color: #2ecc71;
+        }
+
+        .error {
+            color: #ff4d4f;
+        }
+
+        .message {
+            margin-top: 30px;
+            font-size: 26px;
+        }
+
+        .time {
+            margin-top: 40px;
+            color: #8ca0b3;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <div class="panel">
+
+            <div class="title">
+                医院业务接口监控
+            </div>
+
+            <div id="status" class="status">
+                正在检测...
+            </div>
+
+            <div id="message" class="message"></div>
+
+            <div id="time" class="time"></div>
+
+        </div>
+
+    </div>
+
+    <script>
+
+        const API_URL = "http://172.16.1.62:8888/hospital/detail";
+
+        async function checkApi() {
+
+            const status = document.getElementById("status");
+            const message = document.getElementById("message");
+            const time = document.getElementById("time");
+
+            try {
+
+                const response = await fetch(API_URL, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        type: "TianJieKouJC",
+                        data: "",
+                        msgCode: null
+                    })
+
+                });
+
+                if (!response.ok) {
+                    throw new Error("HTTP状态码：" + response.status);
+                }
+
+                const result = await response.json();
+
+                /*
+                 * 根据你的实际 code 定义调整
+                 * 截图中 code=1 表示正常
+                 */
+
+                if (result.code === 1) {
+
+                    status.innerHTML = "● 接口正常";
+                    status.className = "status normal";
+
+                    message.innerHTML = "所有业务接口运行正常";
+
+                } else {
+
+                    status.innerHTML = "● 接口异常";
+                    status.className = "status error";
+
+                    message.innerHTML = result.msg || "未知接口异常";
+
+                }
+
+            } catch (e) {
+
+                /*
+                 * 注意：
+                 *
+                 * 这里说明连你自己的
+                 * Windows监控接口都访问不到
+                 */
+
+                status.innerHTML = "● 监控异常";
+                status.className = "status error";
+
+                message.innerHTML = "监控接口无法访问：" + e.message;
+
+            }
+
+            time.innerHTML =
+                "最后检测：" + new Date().toLocaleString();
+
+        }
+
+        checkApi();
+
+        /*
+         * 每5秒检查一次
+         */
+        setInterval(checkApi, 5000);
+
+    </script>
+
+</body>
+
+</html>
