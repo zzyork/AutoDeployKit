@@ -148,3 +148,4 @@ packages/
 hosts
 .tmp_firewalld
 /server_check/reporters/
+tests/*
