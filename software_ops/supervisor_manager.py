@@ -95,13 +95,42 @@ def install_supervisor(client):
     return None
 
 def configure_ini(client, replace=False):
-    while True:
-        ini_name = input("请输入要修改的守护进程名称：" if replace else "请输入要创建的守护进程名称：").strip()
-        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", ini_name):
-            break
-        print_error("名称只能包含字母、数字、下划线和连字符，且不能以符号开头")
+    ini_base_dir = get_ini_base_dir(client)
+    if replace:
+        output, err, list_status = run_command(
+            client,
+            f"find {shlex.quote(ini_base_dir)} -maxdepth 1 -type f -name '*.ini' -printf '%f\\n'",
+        )
+        if list_status != 0:
+            print_error(f"获取 Supervisor 子应用列表失败：{err or output}")
+            return
+        ini_names = sorted({
+            filename[:-4] for filename in output.splitlines()
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*\.ini", filename)
+        })
+        if not ini_names:
+            print_warning("当前配置目录没有可修改的 Supervisor 子应用")
+            return
+        print_info("========== Supervisor 子应用列表 ==========")
+        for index, name in enumerate(ini_names, 1):
+            print_info(f"{index}. {name}")
+        print_info("0. 返回")
+        choice = menu_choice(
+            "请选择要修改的子应用编号：",
+            valid_choices=[str(index) for index in range(len(ini_names) + 1)],
+            default="0",
+        )
+        if choice == "0":
+            return
+        ini_name = ini_names[int(choice) - 1]
+    else:
+        while True:
+            ini_name = input("请输入要创建的守护进程名称：").strip()
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", ini_name):
+                break
+            print_error("名称只能包含字母、数字、下划线和连字符，且不能以符号开头")
 
-    ini_path = posixpath.join(get_ini_base_dir(client), ini_name + ".ini")
+    ini_path = posixpath.join(ini_base_dir, ini_name + ".ini")
     _, _, status = run_command(client, f"test -f {shlex.quote(ini_path)}")
     if replace and status != 0:
         print_error(f"ini文件 {ini_path} 不存在，请确认后重试")
