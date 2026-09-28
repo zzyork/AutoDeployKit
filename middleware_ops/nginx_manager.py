@@ -124,8 +124,26 @@ def install_nginx(client, version=None):
         print_info("开始安装Nginx " + version + "......\n")
 
         print_info("创建nginx用户")
-        run_command_live(client, "getent group nginx || groupadd nginx")
-        run_command_live(client, "id nginx &>/dev/null || useradd -r -g nginx nginx")
+        _, status = run_command_live(client, "getent group nginx || groupadd nginx")
+        if status != 0:
+            print_error("创建nginx用户组失败")
+            return None
+        _, status = run_command_live(client, "id nginx &>/dev/null || useradd -r -m -d /home/nginx -g nginx nginx")
+        if status != 0:
+            print_error("创建nginx用户失败")
+            return None
+        passwd_entry, _, status = run_command(client, "getent passwd nginx")
+        fields = passwd_entry.strip().split(":")
+        if status != 0 or len(fields) < 7 or not posixpath.isabs(fields[5]) or fields[5] == "/":
+            print_error("无法确定nginx用户的home目录")
+            return None
+        home_dir = shlex.quote(fields[5])
+        _, status = run_command_live(
+            client, f"test -d {home_dir} || install -d -m 0750 -o nginx -g nginx {home_dir}"
+        )
+        if status != 0:
+            print_error("创建nginx用户home目录失败")
+            return None
         print_success("创建nginx用户完成。\n")
 
         print_info("安装依赖")

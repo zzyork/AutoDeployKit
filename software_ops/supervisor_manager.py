@@ -285,10 +285,10 @@ def manage_supervisor(client):
                 print("无效选项，请重新输入")
         else:
             print("Supervisor已安装，当前版本：" + current_version)
-            print("========== ini守护进程配置菜单 ==========")
-            print("1. 创建ini守护进程文件")
-            print("2. 修改ini守护进程文件")
-            print("3. 删除ini守护进程文件")
+            print("========== ini子应用配置菜单 ==========")
+            print("1. 创建子应用")
+            print("2. 修改子应用")
+            print("3. 删除子应用")
             print("0. 返回/跳过")
             choice = menu_choice("请选择操作编号: ", valid_choices=['1', "2", '3', '0'], default="0")
             if choice == "1":
