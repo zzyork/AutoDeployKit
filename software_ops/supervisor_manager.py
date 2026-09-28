@@ -1,10 +1,15 @@
 import os
+import posixpath
+import re
 import shlex
 from getpass import getpass
-from utils.file_utils import upload_file_with_vars, upload_file
-from utils.output import print_info, print_error, print_warning, print_success
-from utils.ssh_utils import run_command, run_command_live
+from pathlib import Path
+from string import Template
+
 from utils.choice import confirm_yes_no, menu_choice
+from utils.file_utils import upload_file, upload_file_with_vars
+from utils.output import print_error, print_info, print_success, print_warning
+from utils.ssh_utils import run_command, run_command_live
 
 current_version, status, stable_version = None, None, None
 
@@ -89,53 +94,94 @@ def install_supervisor(client):
         print_warning(f"返回上一级菜单")
     return None
 
-def add_ini(client):
-    ini_base_dir = get_ini_base_dir(client)
+def configure_ini(client, replace=False):
+    while True:
+        ini_name = input("请输入要修改的守护进程名称：" if replace else "请输入要创建的守护进程名称：").strip()
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", ini_name):
+            break
+        print_error("名称只能包含字母、数字、下划线和连字符，且不能以符号开头")
 
-    while True:
-        ini_name = input("请输入要创建的守护进程名称：").strip()
-        if ini_name != "":
-            break
-        print_error("ini文件名称不能为空，请重新输入")
-    while True:
-        program_command = input("请输入要守护的程序启动命令：").strip()
-        if program_command != "":
-            break
-        print_error("程序启动命令不能为空，请重新输入")
-    local_path = os.path.join("config", "supervisor", "program.ini")
-    remote_path = ini_base_dir + "/" + ini_name + ".ini"
-    upload_file_with_vars(client, local_path, remote_path, {'PROGRAM_NAME': ini_name, 'PROGRAM_COMMAND': program_command})
-    print_success(f"ini文件 {remote_path} 创建成功")
-    if confirm_yes_no("是否重启supervisord服务以应用更改？", default=True):
-        run_command_live(client, "supervisorctl update")
-        print_success("supervisord服务重启完成\n")
-
-def modify_ini(client):
-    ini_base_dir = get_ini_base_dir(client)
-    while True:
-        ini_name = input("请输入要修改的守护进程名称：").strip()
-        if ini_name != "":
-            break
-        print_error("名称不能为空，请重新输入")
-    ini_path = ini_base_dir + "/" + ini_name + ".ini"
-    _, _, status = run_command(client, f"test -f {ini_path}")
-    if status != 0:
+    ini_path = posixpath.join(get_ini_base_dir(client), ini_name + ".ini")
+    _, _, status = run_command(client, f"test -f {shlex.quote(ini_path)}")
+    if replace and status != 0:
         print_error(f"ini文件 {ini_path} 不存在，请确认后重试")
         return
+    if not replace and status == 0:
+        print_error(f"ini文件 {ini_path} 已存在，取消创建")
+        return
+
     while True:
-        program_command = input("请输入新的程序启动命令：").strip()
-        if program_command != "":
+        program_command = input("请输入要守护的程序启动命令：").strip()
+        if program_command and "\n" not in program_command and "\r" not in program_command:
             break
         print_error("程序启动命令不能为空，请重新输入")
-    run_command(client, f"cp {ini_path} {ini_path}.bak_$(date +%Y%m%d%H%M%S)")
-    print_info(f"已创建备份文件 {ini_path}.bak")
-    print_info("正在修改ini文件......")
-    safe_command = program_command.replace('\\', '\\\\').replace('&', '\\&').replace('|', '\\|')
-    run_command_live(client, f"sed -i 's|^command[[:space:]]*=[[:space:]]*.*|command={safe_command}|' {ini_path}")
-    print_success(f"ini文件 {ini_path} 修改成功")
-    if confirm_yes_no("是否重新加载supervisord配置以应用修改？", default=True):
-        run_command_live(client, "supervisorctl update")
-        print_success("supervisord配置加载完成\n")
+
+    while True:
+        directory = input("请输入程序工作目录（绝对路径）：").strip()
+        if posixpath.isabs(directory) and "\n" not in directory and "\r" not in directory and ";" not in directory:
+            break
+        print_error("工作目录必须是有效的绝对路径")
+
+    while True:
+        program_user = input("请输入运行用户（默认：nginx）：").strip() or "nginx"
+        if re.fullmatch(r"[a-z_][a-z0-9_-]*\$?", program_user):
+            break
+        print_error("请输入有效的 Linux 用户名")
+
+    while True:
+        logfile = input(f"请输入日志文件路径（默认：/data/logs/{ini_name}.log）：").strip() or f"/data/logs/{ini_name}.log"
+        if posixpath.isabs(logfile) and "\n" not in logfile and "\r" not in logfile and ";" not in logfile:
+            break
+        print_error("日志文件路径必须是有效的绝对路径")
+
+    variables = {
+        'PROGRAM_NAME': ini_name,
+        'PROGRAM_COMMAND': program_command,
+        'PROGRAM_DIRECTORY': directory,
+        'PROGRAM_USER': program_user,
+        'PROGRAM_LOGFILE': logfile,
+    }
+    local_path = Path("config/supervisor/program.ini")
+    with local_path.open(encoding="utf-8") as template_file:
+        config = Template(template_file.read()).substitute(variables)
+    print_info(f"拟{'替换' if replace else '创建'} {ini_path}，完整配置如下：\n{config}")
+    if replace:
+        print_info("确认后将先备份原文件，再上传完整配置并执行 supervisorctl update")
+    else:
+        print_info("确认后将上传配置并执行 supervisorctl update")
+    if not confirm_yes_no("确认执行以上操作？", default=False):
+        return
+
+    if replace:
+        backup_cmd = f"cp -p {shlex.quote(ini_path)} {shlex.quote(ini_path + '.bak_')}$(date +%Y%m%d%H%M%S%N)"
+        _, err, backup_status = run_command(client, backup_cmd)
+        if backup_status != 0:
+            print_error(f"备份失败，取消替换：{err}")
+            return
+    else:
+        _, _, status = run_command(client, f"test -e {shlex.quote(ini_path)}")
+        if status == 0:
+            print_error("目标文件已存在，取消创建")
+            return
+
+    upload_file_with_vars(client, str(local_path), ini_path, variables)
+    actual, err, read_status = run_command(client, f"cat {shlex.quote(ini_path)}")
+    if read_status != 0 or actual != config.strip():
+        print_error(f"配置写入后校验失败：{err or ini_path}；未执行 supervisorctl update")
+        return
+    print_success(f"ini文件 {ini_path} {'替换' if replace else '创建'}成功")
+    _, update_status = run_command_live(client, "supervisorctl update")
+    if update_status != 0:
+        print_error("supervisorctl update 失败，请检查配置")
+        return
+    result, err, status = run_command(client, f"supervisorctl status {shlex.quote(ini_name)}")
+    print_info(f"当前状态：{result or err}" if status == 0 else f"状态查询失败：{err or result}")
+
+def add_ini(client):
+    configure_ini(client)
+
+def modify_ini(client):
+    configure_ini(client, replace=True)
 
 def delete_ini(client):
     ini_base_dir = get_ini_base_dir(client)
