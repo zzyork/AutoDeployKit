@@ -2,9 +2,12 @@
 
 - 状态：拟定
 - 日期：2026-08-06
+- 更新：2026-09-28
 - 首期用户：内网单用户
-- 首期范围：服务器巡检与查看类操作
+- 首期范围：WebUI 资产与 SSH 登录密钥管理、AI 服务器巡检与查看类操作
 - 模型接口：OpenAI-compatible API
+
+以下为设计目标，尚未实现；CLI 在过渡期继续独立读取 `hosts`，最终计划移除。
 
 ## 1. 背景
 
@@ -30,11 +33,13 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 
 1. 用户可在浏览器中通过中文自然语言发起服务器巡检。
 2. 模型将意图转换为结构化工具调用，不生成或执行任意 shell。
-3. 后端只允许选择 `hosts` 中已配置的主机或主机组。
+3. 用户在 WebUI 中管理服务器清单；后端只允许选择数据库中已登记、启用的主机或主机组。
 4. 浏览器可实时查看连接、巡检和报告生成进度。
 5. 巡检报告继续保存到 `server_check/reporters`，并可在页面查看。
 6. 保存会话、任务、工具调用和结果状态，形成最小审计记录。
-7. 保持现有 CLI 可用，WebUI 与 CLI 复用相同的主机解析和巡检服务。
+7. WebUI 可生成多组 SSH 登录密钥对，配置主机账号时选择密钥；用户自行将公钥配置到远端。
+8. 模型和主机等日常配置通过 WebUI 管理并持久化到数据库。
+9. 过渡期保持 CLI 读取 `hosts`，WebUI 读取数据库；两者不做同步，巡检核心仍复用。
 
 ### 2.2 非目标
 
@@ -45,14 +50,17 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 - 不实现多用户、RBAC、多租户或公网 SaaS。
 - 不引入微服务、Redis、Celery、工作流引擎、MCP 或插件系统。
 - 不引入 React、Vue 等前端构建链。
+- 不提供浏览器 SSH 终端、任意命令、会话录像或完整堡垒机权限体系。
+- 不自动修改远程账号的 `authorized_keys`，不检查用户是否已安装登录公钥。
 
 ## 3. 非功能要求
 
 ### 3.1 安全
 
 - 默认只允许内网访问，生产部署建议经反向代理提供 HTTPS。
-- 使用环境变量配置的单用户访问口令，不在仓库保存口令或模型密钥。
-- SSH 密码、私钥路径和代理凭据不得返回浏览器或发送给模型。
+- 单用户口令在 WebUI 设置，数据库仅保存加盐的慢哈希；模型 API key 与 SSH 登录私钥
+  加密存入数据库，加密根密钥不得与数据库同存或加入仓库。
+- SSH 私钥、密码和代理凭据不得返回浏览器或发送给模型；页面只提供公钥展示与导出。
 - 模型工具调用、浏览器输入和远程输出均视为不可信数据。
 - 所有工具参数在执行前进行服务端校验；模型提示词不能代替策略校验。
 - 报告下载必须限定在 `server_check/reporters` 根目录内，阻止路径穿越。
@@ -76,7 +84,7 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 ```text
 ┌───────────────────────────────────────────────────────────┐
 │ Browser                                                   │
-│  Chat UI · Task progress · Report viewer                  │
+│  Chat · Tasks · Reports · Assets · Settings               │
 └───────────────────────┬───────────────────────────────────┘
                         │ HTTP + SSE
 ┌───────────────────────▼───────────────────────────────────┐
@@ -90,13 +98,13 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 │                        │                                  │
 │             Inspection Application Service                │
 │                │                   │                      │
-│          Host Registry             Report Store            │
+│          Asset Registry            Report Store            │
 │                │                   │                      │
-│             Paramiko       server_check/reporters          │
+│          utils/ssh_utils.py  server_check/reporters         │
 │                │                                          │
 │          Target Linux Servers                             │
 │                                                           │
-│  SQLite: conversations · messages · jobs                  │
+│  SQLite: assets · SSH keys · settings · sessions · jobs    │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -107,13 +115,21 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 
 ### 5.1 浏览器界面
 
-首屏直接呈现可用的聊天工作台，不制作营销页。页面包含：
+首屏直接呈现可用的 AI 聊天工作台，不制作营销页。页面包含：
 
-- 左侧：历史会话列表。
+- 全局侧栏：AI 工作台、任务、报告、主机；设置固定在侧栏底部，仅显示已开放的功能。
+- 工作台左侧：历史会话列表。
 - 中间：对话消息、工具调用摘要和错误信息。
 - 底部：自然语言输入框与发送按钮。
-- 任务区域：固定高度的进度列表，显示主机级状态，避免内容变化导致布局跳动。
-- 报告区域：风险摘要和 Markdown 原文入口。
+- 工作台右侧：运行时固定高度的逐主机进度，结束后显示风险摘要与报告入口。
+- 任务、报告有独立可定位的列表与详情，按状态、目标和时间筛选；报告先显示风险与
+  失败主机，按需展开 Markdown 原文。
+- 主机页：分组、标签和搜索；主机详情关联任务、报告、登录账号、跳板机与所选登录密钥。
+- 设置页：模型地址、模型名、API key、登录口令及 SSH 登录密钥库。
+
+宽屏显示全局侧栏、会话列表、正文及任务详情；中等宽度将会话和任务详情改为抽屉，
+窄屏使用单列切换。浅色中性底配青绿操作色、琥珀警告和红色失败，状态同时使用文字；
+使用紧凑表格、可见键盘焦点和状态播报，避免功能增长后堆叠卡片或不断扩展顶栏。
 
 前端使用原生 HTML、CSS 和 JavaScript。用户消息通过 `POST /api/chat` 提交，任务进度
 通过 SSE 接收。首期不需要 WebSocket，因为浏览器到服务端只有普通请求，只有任务进度
@@ -121,22 +137,27 @@ WebUI 不应模拟终端菜单，也不应把模型生成的 shell 命令直接�
 
 ### 5.2 Web API
 
-建议使用 FastAPI 和 Uvicorn。FastAPI 提供请求模型、参数校验、OpenAPI 和流式响应，适合
-定义严格的工具参数边界。该选择会新增 `fastapi`、`uvicorn` 依赖，实施前需明确确认。
+使用 FastAPI 和 Uvicorn。FastAPI 提供请求模型、参数校验、OpenAPI 和流式响应，适合
+定义严格的工具参数边界；新增 `fastapi`、`uvicorn` 两项依赖已确认。
 
 首期 API：
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | `POST` | `/api/login` | 校验单用户访问口令并建立会话 |
-| `GET` | `/api/hosts` | 返回可选主机组及脱敏主机标识 |
+| `GET/POST` | `/api/hosts` | 查询和登记数据库中的服务器资产 |
+| `PATCH` | `/api/hosts/{host_id}` | 编辑或停用资产，保留历史记录 |
+| `POST` | `/api/ssh-keys` | 在服务端生成 SSH 登录密钥对，保存加密私钥 |
+| `GET` | `/api/ssh-keys` | 列出密钥名称与公钥，绝不返回私钥 |
+| `GET/PATCH` | `/api/settings` | 查询和更新模型及单用户配置，不回显 API key |
 | `POST` | `/api/chat` | 保存用户消息并启动模型决策 |
 | `GET` | `/api/jobs/{job_id}` | 查询任务当前状态 |
 | `GET` | `/api/jobs/{job_id}/events` | 通过 SSE 接收任务事件 |
 | `GET` | `/api/reports/{report_id}` | 读取允许目录内的巡检报告 |
 
-所有 `/api/*` 路由除登录外都必须校验服务端会话。Cookie 使用 `HttpOnly`、`SameSite=Lax`，
-在 HTTPS 下启用 `Secure`。
+首次设置管理员口令必须限制为受控初始化入口，不开放任意访问者抢先注册。所有 `/api/*`
+路由除登录及受控初始化外都校验服务端会话；敏感配置更新需重新验证身份，写接口防 CSRF。
+Cookie 使用 `HttpOnly`、`SameSite=Lax`，在 HTTPS 下启用 `Secure`。
 
 ### 5.3 Agent Controller
 
@@ -153,15 +174,9 @@ Agent Controller 负责一次用户消息的有限状态流转：
 “巡检某组服务器并总结风险”的首期场景。模型接口直接复用项目已有 `requests`，不增加
 厂商 SDK。
 
-环境变量：
-
-```text
-LLM_BASE_URL
-LLM_API_KEY
-LLM_MODEL
-WEBUI_PASSWORD
-WEBUI_SESSION_SECRET
-```
+模型地址、模型名和 API key 在 WebUI 设置后存入数据库；API key 只存密文，不在响应、日志
+或模型上下文中回显。单用户口令只存哈希；采用服务端数据库会话与随机令牌，不要求手工配置
+`WEBUI_SESSION_SECRET`。加密根密钥是唯一不能与密文同存的启动材料，详见 5.7 和第 9 节。
 
 ### 5.4 工具注册表与策略门
 
@@ -170,7 +185,7 @@ WEBUI_SESSION_SECRET
 ```json
 {
   "name": "inspect_servers",
-  "description": "巡检 hosts 中已配置的服务器并生成报告",
+  "description": "巡检 WebUI 中已登记并启用的服务器并生成报告",
   "risk": "read",
   "input_schema": {
     "type": "object",
@@ -205,7 +220,8 @@ WEBUI_SESSION_SECRET
 
 远程只读工具。参数：
 
-- `host_pattern`：必须能由 `hosts` 唯一解析；支持组名、已登记 IP、逗号分隔 IP 或 `all`。
+- `host_pattern`：仅从数据库中唯一解析已启用的主机标识、组名、已登记地址或 `all`；
+  拒绝聊天或模型给出的临时地址、重复标识及歧义匹配。
 - `checks`：可选，只允许 `server_check.CHECK_HANDLERS` 已注册的名称。
 
 返回：
@@ -227,8 +243,8 @@ WEBUI_SESSION_SECRET
 
 #### `latest_inspection`
 
-本地只读工具。按已登记主机或主机组读取 `server_check/reporters` 下最近一次报告，不建立
-SSH 连接。它只返回报告标识、生成时间和风险摘要，不接受任意文件路径。
+本地只读工具。按已登记主机或主机组读取 WebUI 任务索引的最近一次报告，不建立 SSH
+连接。它只返回报告标识、生成时间和风险摘要，不接受任意文件路径；CLI 旧报告暂不索引。
 
 ### 5.6 任务执行与事件
 
@@ -259,7 +275,9 @@ assistant.message
 
 ### 5.7 数据存储
 
-使用标准库 `sqlite3` 保存元数据，报告继续使用文件系统。
+使用标准库 `sqlite3` 保存 WebUI 资产、登录密钥、配置、会话和任务；报告继续使用文件系统。
+WebUI 数据库与 CLI 的 `hosts` 相互独立，不做同步；真实地址与密钥数据仅保存在本地数据库，
+不得提交 Git。主机停用保留历史任务和报告，不自动删除记录。
 
 最小数据表：
 
@@ -267,22 +285,47 @@ assistant.message
 conversations(id, title, created_at, updated_at)
 messages(id, conversation_id, role, content, created_at)
 jobs(id, conversation_id, tool_name, status, arguments_json,
-     result_json, error, created_at, started_at, finished_at)
+      result_json, error, created_at, started_at, finished_at)
+hosts(id, name, address, port, group_name, tags_json, username,
+      ssh_key_id, proxy_host_id, enabled, created_at, updated_at)
+ssh_keys(id, name, public_key, private_key_ciphertext, created_at)
+settings(key, value_or_ciphertext)
+admin_auth(password_hash)
+sessions(token_hash, expires_at)
 ```
 
 首期无需单独的 `tool_calls` 表；工具名、参数和结果已包含在 `jobs`。只有出现一条消息调用
-多个工具或复杂审批历史时再拆表。
+多个工具或复杂审批历史时再拆表。首期每台主机配置一个登录账号及所选密钥；只有实际出现
+一台主机多账号需求时再拆出账号表。服务端生成多组密钥对，公钥可复制或下载，由用户自行
+加入远程账号的 `authorized_keys`；私钥加密入库、仅在后端 SSH 认证时使用。没有配置好
+远端公钥时按普通认证失败处理，不增加预检查或确认流程。密钥可被多台主机选用；跳板机
+也按资产关联并使用其自身的账号配置。
+
+`jobs.result_json` 按资产 ID 记录每台主机的报告 ID、受限相对路径及生成时间；报告列表
+和 `latest_inspection` 只索引 WebUI 任务生成的报告，不扫描任意路径。报告 ID 到文件路径
+的映射仅在服务端完成，读取时仍检查路径在固定报告根目录内。
+
+模型 API key 等可逆秘密只存密文，登录口令只存加盐的慢哈希。加密根密钥不得存在同一个
+SQLite 文件中；建议首启自动生成并保存在仓库与数据库外、仅服务账号可读的位置，备份时
+与数据库分开保护。根密钥托管和首次管理员初始化的具体方式实施前仍需确定。数据库会话
+使用随机令牌，数据库只存令牌哈希，避免额外的手工会话密钥配置。
 
 ## 6. 现有代码改造边界
 
-### 6.1 主机解析与 SSH 生命周期
+### 6.1 主机来源与 SSH 生命周期
 
-从 `cli.py` 提取可复用函数，但不改变 `hosts` 格式：
+过渡期保持两个独立入口，不改 CLI 的 `hosts` 格式，也不维护双向同步：
 
-- 主机解析失败时抛出明确异常，不在共享函数中 `sys.exit()`。
-- CLI 捕获异常后打印并退出；Web API 捕获异常后返回 4xx。
-- WebUI 只接受 `hosts` 中已存在的目标，禁止用户提交临时 IP、用户名或密码。
-- 连接始终从工作区 `hosts` 读取 SSH 配置。
+- CLI 只读取 `hosts`，未来移除 CLI；WebUI 只读取数据库中的资产及加密登录凭据。
+- CLI 保持原有主机解析；WebUI 独立校验资产标识唯一性、端口范围、分组与跳板机引用。
+- WebUI 可登记主机，但 AI 工具只能选择已启用资产，不接受临时地址或认证信息。
+- WebUI 与 CLI 复用 `server_check` 的巡检逻辑及 `utils/ssh_utils.py` 的 SSH 连接实现，
+  不通过 CLI 子进程或模拟 stdin 执行。共享连接入口需要接受内存中的解密私钥对象，
+  同时保留 CLI 的 `key_file` 接口；不得把明文私钥写入临时文件，跳板机同样适用。
+
+当前 `AGENTS.md`、`CLAUDE.md` 与 `README.md` 仍要求远程 SSH 操作从 `hosts` 读取，
+和 WebUI 数据库资产设计冲突。实施 WebUI 数据库 SSH 连接前，必须同步修订这些项目说明，
+明确 CLI 走 `hosts`、WebUI 走数据库；规则未修订前不得按数据库配置连接远程主机。
 
 SSH 连接建议由一个上下文管理器统一关闭目标连接和代理连接。首期不做连接池，避免长时间
 持有高权限连接。
@@ -294,7 +337,9 @@ SSH 连接建议由一个上下文管理器统一关闭目标连接和代理连�
 - `inspect_server()` 显式接收 `group`，不从 `sys.argv` 读取。
 - 返回主机状态、alerts 和报告路径，不只写文件或打印。
 - `run()` 保持 CLI 包装职责，继续选择默认报告目录并显示控制台信息。
-- 报告根目录固定为 `server_check/reporters`；Web 请求不能覆盖根目录。
+- 报告根目录固定为 `server_check/reporters`；Web 请求不能覆盖根目录。组名及远端返回的
+  hostname 都不能未经约束就用作目录或文件名；Web 报告以受限的资产标识生成路径，并在
+  写入前校验解析后的路径仍位于报告根目录内，CLI 原有命名行为保持不变。
 
 首期不全面替换 `utils/output.py`。Web 任务只推送主机级事件，现有详细控制台输出继续供
 CLI 和服务日志使用。需要逐步骤展示内部巡检进度时，再把输出回调作为显式参数加入。
@@ -313,14 +358,14 @@ CLI 和服务日志使用。需要逐步骤展示内部巡检进度时，再把�
 浏览器输入       -> 不可信
 模型工具调用     -> 不可信
 目标服务器输出   -> 不可信
-hosts 配置       -> 服务端受控，但不得外泄
+数据库资产及密钥 -> 服务端受控，但不得外泄凭据
 工具注册表       -> 唯一可信执行入口
 ```
 
 ### 7.2 命令与参数安全
 
 - 不提供任意命令工具。
-- `host_pattern` 必须通过主机注册表解析。
+- `host_pattern` 必须通过 WebUI 数据库中已启用的资产解析。
 - `checks` 必须来自固定枚举。
 - 后续服务名、端口等参数必须有格式和范围校验，并在组成固定命令时使用 `shlex.quote()`。
 - 策略门在模型调用之后、SSH 连接之前执行。
@@ -328,9 +373,14 @@ hosts 配置       -> 服务端受控，但不得外泄
 
 ### 7.3 SSH 主机身份
 
-当前 `utils/ssh_utils.py` 使用 `AutoAddPolicy()` 自动接受未知主机密钥。WebUI 长期运行会放大
-中间人攻击风险。实施时应支持加载项目外的 known-hosts 文件，并在生产环境默认拒绝未知或
-变化的主机密钥。known-hosts 可能包含真实服务器信息，不得加入 Git。
+这里区分两种密钥：WebUI 生成的是客户端用于登录远程账号的密钥对，私钥在 WebUI 本地，
+公钥由用户自行安装到远程账号；SSH 服务器用于证明自身身份的主机密钥是另一回事。
+首期不增加主机指纹人工核对、远端登录公钥安装检查或相关确认界面。
+
+当前 `utils/ssh_utils.py` 对目标和跳板机都使用 `AutoAddPolicy()` 接受未知主机密钥，
+且未持久化可信主机密钥；在该行为下首次连接不能证明服务器身份，存在中间人攻击风险。
+此前的“生产环境默认拒绝未知主机密钥、维护外部 known-hosts”提案不再作为本期交互或
+部署前置条件。此处不把登录密钥对误称为主机身份校验，也不宣称当前连接已具备该保护。
 
 ### 7.4 Prompt Injection 与数据泄露
 
@@ -338,12 +388,13 @@ hosts 配置       -> 服务端受控，但不得外泄
 - 工具结果中的文字不能新增工具、修改系统规则或直接触发第二次执行。
 - 首期每条消息最多一次远程工具调用。
 - 发送模型前删除 ANSI 控制字符，限制单主机输出和总上下文长度。
-- 不向模型发送 `hosts` 原文、SSH 密码、私钥路径、代理凭据或本地环境变量。
+- 不向模型发送资产连接详情、SSH 私钥、模型 API key、代理凭据或本地环境变量。
 
 ### 7.5 Web 安全
 
 - 使用恒定时间比较校验访问口令。
 - 登录和聊天接口做简单的进程内限流。
+- 敏感配置更新使用受保护的会话、CSRF 防护及再次验证；密钥和 API key 不进入任务记录。
 - 设置 CSP、`X-Content-Type-Options`、`Referrer-Policy` 和 frame 限制。
 - 报告正文作为文本或经过安全 Markdown 渲染，禁止直接注入未清洗 HTML。
 - 生产环境关闭调试模式和异常堆栈响应。
@@ -352,7 +403,8 @@ hosts 配置       -> 服务端受控，但不得外泄
 
 | 场景 | 行为 |
 |---|---|
-| `hosts` 不存在或无法读取 | 拒绝任务，明确提示路径问题 |
+| WebUI 资产未登记或已停用 | 拒绝任务，不尝试 SSH |
+| SSH 密钥缺失、解密失败或认证失败 | 记录连接失败，不自动修改远程配置 |
 | 主机模式无匹配 | 返回参数错误，不调用模型重试执行 |
 | 多个近似主机无法唯一确定 | 拒绝任务，要求用户明确选择 |
 | 单台 SSH 连接失败 | 记录该主机失败，继续其他主机 |
@@ -369,9 +421,9 @@ hosts 配置       -> 服务端受控，但不得外泄
 ```text
 Reverse Proxy (TLS, access restriction)
     -> Uvicorn / FastAPI
-        -> SQLite
+        -> SQLite (assets, encrypted secrets, conversations, jobs)
+        -> encryption root key (outside SQLite and Git)
         -> server_check/reporters
-        -> hosts and external known-hosts
         -> OpenAI-compatible API
         -> SSH target servers
 ```
@@ -379,8 +431,8 @@ Reverse Proxy (TLS, access restriction)
 要求：
 
 - 从项目 `.venv` 启动应用。
-- `hosts`、known-hosts、`.env` 和 SQLite 数据库保留在服务器本地，不加入 Git。
-- Web 进程使用专用本地账号运行，只授予读取 `hosts`、写入报告和数据库所需权限。
+- SQLite 数据库及加密根密钥只留在服务器本地，不加入 Git；CLI 的 `hosts` 继续独立使用。
+- Web 进程使用专用本地账号运行，只授予数据库、根密钥和报告所需的最小权限。
 - 反向代理只开放给内网网段；若直接监听，至少限制防火墙来源地址。
 - 首期只运行一个 Uvicorn worker，保证内存队列和单任务锁语义一致。
 
@@ -388,35 +440,42 @@ Reverse Proxy (TLS, access restriction)
 
 ### 10.1 最小单元测试
 
-- 主机组、单 IP、多 IP、`all` 和不存在主机的解析。
+- 数据库资产的组、已登记地址、`all`、停用资产及歧义目标解析。
+- 生成密钥对后公钥可用、私钥仅以密文入库；密钥解密失败时不建立 SSH 连接。
+- 设置接口不回显 API key、SSH 私钥，报告与模型上下文均不包含这些数据。
 - 工具拒绝未知字段、未知巡检项和未登记主机。
 - 策略门允许 `read`、拒绝未开放和 `prohibited` 工具。
 - 报告 ID 无法越过 `server_check/reporters`。
+- 报告写入路径不会因资产分组或远端 hostname 越过固定报告根目录。
 - 非法模型响应不会创建任务。
 
 ### 10.2 集成测试
 
-- 使用假的 SSH client 运行一次巡检，断言生成结构化结果和报告。
+- 使用假的 SSH client 运行一次数据库资产巡检，断言生成结构化结果和报告。
+- WebUI 登记资产、选择生成的密钥以及跳板机时，不调用 CLI 主机解析或连接真实服务器。
+- 使用假的 SSH client 验证数据库私钥在内存中传给目标与跳板机，CLI 文件路径接口不变。
 - 使用 mock OpenAI-compatible 响应完成“消息 -> 工具 -> 任务 -> 总结”闭环。
 - 验证部分主机失败时任务状态为 `partial`。
 - 验证 SSE 事件顺序和断线重连后的状态读取。
 
-测试不得连接真实服务器，也不得读取真实 `hosts`；使用临时主机配置和假的 SSH client。
+测试不得连接真实服务器，也不得读取真实 `hosts`；CLI 测试使用临时主机配置，WebUI
+测试使用临时数据库和假的 SSH client。
 
 ## 11. 分阶段实施
 
 ### 阶段 1：可编程巡检核心
 
-1. 提取无 `sys.exit()` 的主机解析函数。
-2. 让 `server_check` 接收显式参数并返回结构化结果。
-3. 保持现有 CLI 行为兼容。
-4. 添加主机解析和巡检结果的最小测试。
+1. 让 `server_check` 接收显式主机上下文并返回结构化结果，不依赖 `sys.argv`。
+2. 保持 CLI 从 `hosts` 连接和调用巡检的行为不变。
+3. 添加 CLI 兼容与巡检结果的最小测试。
 
 ### 阶段 2：无模型 Web 闭环
 
-1. 添加 FastAPI、Uvicorn 和原生聊天页面。
-2. 添加 SQLite、单任务执行器和 SSE。
-3. 使用固定 mock 工具调用验证巡检和报告查看。
+1. 添加 FastAPI、Uvicorn 和原生工作台、主机、任务、报告及设置页面。
+2. 添加 SQLite 资产、服务端密钥生成与加密存储、单用户登录和受控首次初始化。
+3. 添加单任务执行器和 SSE，以固定 mock 工具调用验证巡检和报告查看。
+4. 在首次使用数据库资产建立真实 SSH 连接前，同步修订 `AGENTS.md`、`CLAUDE.md`
+   和 `README.md` 中的 `hosts` 来源规则。
 
 ### 阶段 3：模型接入
 
@@ -426,9 +485,9 @@ Reverse Proxy (TLS, access restriction)
 
 ### 阶段 4：部署加固
 
-1. 添加单用户登录、限流和安全响应头。
-2. 配置外部 known-hosts、HTTPS 和内网访问限制。
-3. 验证日志、错误响应和报告中不泄露凭据。
+1. 配置限流、安全响应头、HTTPS 和内网访问限制。
+2. 验证日志、错误响应和报告中不泄露凭据，备份数据库及独立加密根密钥。
+3. 核查数据库资产 SSH 已按修订后的项目规则运行，且 CLI 仍独立读取 `hosts`。
 
 ## 12. 架构决策记录
 
@@ -455,26 +514,43 @@ Reverse Proxy (TLS, access restriction)
 
 ### ADR-004：SQLite 保存元数据，文件系统保存报告
 
-- 决策：SQLite 保存会话和任务，Markdown 报告沿用现有目录。
+- 决策：SQLite 保存资产、登录密钥密文、设置、会话和任务，Markdown 报告沿用现有目录。
 - 原因：标准库即可满足单用户场景，避免重复存储报告正文。
 - 替代方案：PostgreSQL、Redis。当前没有并发和可用性需求支撑额外组件。
-- 后果：多实例部署前需要重新评估数据库和事件队列。
+- 后果：必须单独保管加密根密钥；多实例部署前需重新评估数据库和事件队列。
+
+### ADR-005：CLI 与 WebUI 的主机来源分离
+
+- 决策：CLI 继续读 `hosts`，WebUI 使用自己的数据库资产清单，不做同步；未来移除 CLI。
+- 原因：允许用户从 WebUI 管理服务器和登录密钥，同时不破坏现有 CLI。
+- 后果：实施 WebUI SSH 连接前必须修订 `AGENTS.md`、`CLAUDE.md`、`README.md` 中的
+  统一 `hosts` 来源约束。
 
 ## 13. 首期验收标准
 
-1. 用户登录后可输入“巡检 webservers”。
-2. 模型只能产生 `inspect_servers` 或 `latest_inspection` 调用。
-3. 未登记主机、未知工具和任意命令请求均不会建立 SSH 连接。
-4. 页面实时显示每台主机的连接和完成状态。
-5. 成功主机在 `server_check/reporters` 下生成 Markdown 报告。
-6. 页面展示风险摘要并可读取报告，且无法访问报告目录外文件。
-7. 单台主机失败时其他主机仍完成，任务显示 `partial`。
-8. 会话、任务参数、状态和时间可从 SQLite 追溯，记录中不含凭据。
-9. 现有 `python cli.py server_check <host_pattern>` 行为保持可用。
+1. 用户可在 WebUI 登记、分组、停用主机，生成多组登录密钥对并为主机选定密钥；
+   用户自行将所选公钥加入远端账号，WebUI 不自动执行远程配置。
+2. 用户登录后可输入“巡检 webservers”。
+3. 模型只能产生 `inspect_servers` 或 `latest_inspection` 调用。
+4. 未登记或停用主机、未知工具和任意命令请求均不会建立 SSH 连接。
+5. 页面实时显示每台主机的连接和完成状态。
+6. 成功主机在 `server_check/reporters` 下生成 Markdown 报告。
+7. 页面展示风险摘要并可读取报告，且无法访问报告目录外文件。
+8. 单台主机失败时其他主机仍完成，任务显示 `partial`。
+9. 会话与任务可从 SQLite 追溯，记录中不含凭据；API key 与私钥只存密文。
+10. 现有 `python cli.py server_check <host_pattern>` 仍从 `hosts` 读取且行为保持可用。
 
 ## 14. 实施前待确认
 
 - OpenAI-compatible 服务是否完整支持 `tools` 和 `tool_choice` 字段。
-- WebUI 的实际部署操作系统、监听地址和反向代理方式。
-- 生产环境 known-hosts 文件位置和维护方式。
-- 是否接受新增 `fastapi`、`uvicorn` 两项依赖。
+- 已选内网 Linux 单进程部署，经反向代理提供 HTTPS；实施时需确定实际监听地址。
+- 加密根密钥的自动生成、独立保管、备份和首次管理员初始化方式需在实施前确定。
+- 当前 `AGENTS.md`、`CLAUDE.md` 和 `README.md` 均要求远程 SSH 从 `hosts` 读取，
+  需在实现数据库资产 SSH 前同步修订为 CLI 与 WebUI 各自的来源规则。
+
+## 15. 参考依据
+
+- [JumpServer 资产与账号管理](https://docs.jumpserver.org/zh/v4/manual/admin/console/account_management/account_list/)：资产关联登录凭据；登录密钥和服务器主机身份密钥不是同一用途。
+- [Grafana 导航调整](https://grafana.com/docs/grafana/latest/whatsnew/whats-new-in-v9-5/)：功能增长时按用途分组、提供侧栏与跨页面定位。
+- [NN/g 复杂应用设计指南](https://www.nngroup.com/articles/complex-application-design/)：在保留能力的同时降低界面杂乱，并提供任务记录与上下文详情。
+- [CHI 2019 人机 AI 交互指南](https://www.microsoft.com/en-us/research/publication/guidelines-for-human-ai-interaction/)：明确 AI 能力边界，支持解释与纠错。
