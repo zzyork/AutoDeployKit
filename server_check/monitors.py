@@ -1,3 +1,6 @@
+import re
+import shlex
+
 from utils.output import print_error
 from utils.ssh_utils import run_command
 
@@ -11,7 +14,9 @@ def monitors(client, filename, config=None, alerts=None):
         if not exporters:
             f.write("未找到任何已安装的 exporter。\n")
         for exporter in exporters:
-            status_out, _, status = run_command(client, f"systemctl is-active {exporter}")
+            if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@-]*", exporter):
+                continue
+            status_out, _, status = run_command(client, f"systemctl is-active {shlex.quote(exporter)}")
             if status == 1:
                 print_error("exporter 状态查询失败！")
                 return None

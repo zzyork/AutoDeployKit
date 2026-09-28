@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoDeployKit</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script defer src="/assets/app.js"></script>
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-form">
+      <div class="brandmark">ADK<span>.</span></div>
+      <h1>AutoDeployKit</h1>
+      <p>运维工作台</p>
+      <label for="login-password">管理员口令</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button class="primary" type="submit">登录</button>
+      <small id="login-error" role="alert"></small>
+    </form>
+  </div>
+  <div id="shell" class="shell" hidden>
+    <nav class="sidebar" aria-label="主导航">
+      <div class="wordmark">ADK<span>.</span><small>AutoDeployKit</small></div>
+      <div id="nav-items" class="nav-items"></div>
+      <button id="logout" class="sidebar-footer" type="button">退出登录</button>
+    </nav>
+    <main class="main-area">
+      <header class="topbar"><div><span id="section-label" class="eyebrow">工作台</span><h1 id="page-title">巡检工作台</h1></div><div id="header-actions"></div></header>
+      <div id="view" class="view"></div>
+    </main>
+    <aside id="side-pane" class="side-pane" aria-label="任务详情" hidden></aside>
+  </div>
+  <dialog id="host-dialog" class="editor-dialog">
+    <form id="host-form" method="dialog">
+      <div class="dialog-header"><h2 id="host-dialog-title">登记资产</h2><button id="close-host" type="button" class="text-button" aria-label="关闭">关闭</button></div>
+      <div class="form-grid">
+        <label>资产名称<input name="name" required maxlength="80"></label>
+        <label>地址<input name="address" required autocomplete="off"></label>
+        <label>SSH 端口<input name="port" type="number" min="1" max="65535" value="22" required></label>
+        <label>分组<input name="group_name" value="default" required></label>
+        <label>登录账号<input name="username" required autocomplete="off"></label>
+        <label>标签<input name="tags" placeholder="多个标签用逗号分隔"></label>
+        <label>登录方式<select name="auth"><option value="password">密码</option><option value="key">SSH 密钥</option></select></label>
+        <label id="password-field">登录密码<input name="password" type="password" autocomplete="new-password"></label>
+        <label id="key-field" hidden>登录密钥<select name="ssh_key_id"></select></label>
+        <label>跳板机<select name="proxy_host_id"><option value="">无</option></select></label>
+        <label id="reauth-field" hidden>管理员口令<input name="admin_password" type="password" autocomplete="current-password"></label>
+      </div>
+      <div class="dialog-actions"><button id="cancel-host" type="button">取消</button><button class="primary" type="submit">保存资产</button></div>
+    </form>
+  </dialog>
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

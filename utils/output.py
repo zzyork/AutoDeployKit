@@ -16,7 +16,7 @@ def _get_active_buffer():
 
 
 def _flush_console(buffer):
-    if not buffer:
+    if not buffer or getattr(_output_state, "web_silent", False):
         return
     with _output_lock:
         sys.stdout.write("".join(buffer))
@@ -24,6 +24,8 @@ def _flush_console(buffer):
 
 
 def _write_console(formatted_msg):
+    if getattr(_output_state, "web_silent", False):
+        return
     buffer = _get_active_buffer()
     if buffer is not None:
         buffer.append(f"{formatted_msg}\n")
@@ -50,7 +52,23 @@ def buffer_output():
             pass
         _flush_console(buffer)
 
+
+@contextmanager
+def web_output():
+    previous = getattr(_output_state, "web_silent", False)
+    previous_state = getattr(_output_state, "web_state", None)
+    state = {"errors": 0}
+    _output_state.web_silent = True
+    _output_state.web_state = state
+    try:
+        yield state
+    finally:
+        _output_state.web_silent = previous
+        _output_state.web_state = previous_state
+
 def log(msg):
+    if getattr(_output_state, "web_silent", False):
+        return
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] {msg}\n")
@@ -71,6 +89,9 @@ def print_warning(msg):
     log(f"WARNING: {msg}")
 
 def print_error(msg):
+    state = getattr(_output_state, "web_state", None)
+    if state is not None:
+        state["errors"] += 1
     formatted_msg = f"\n❌ {Fore.RED}{Style.BRIGHT}{msg}{Style.RESET_ALL}"
     _write_console(formatted_msg)
     log(f"ERROR: {msg}")

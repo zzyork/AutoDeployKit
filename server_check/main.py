@@ -1,7 +1,9 @@
 import datetime
 import os
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from colorama import Fore
 
@@ -15,7 +17,7 @@ from server_check.server_info import server_info
 from server_check.server_resources import system_resources
 from server_check.services import service_status
 from server_check.supervisor import supervisor_status
-from utils.output import buffer_output, print_error, print_info, print_warning
+from utils.output import buffer_output, print_error, print_info, print_warning, web_output
 from utils.ssh_utils import run_command
 
 
@@ -30,6 +32,59 @@ CHECK_HANDLERS = {
     "log_error": log_error,
     "monitors": monitors,
 }
+WEB_CHECK_HANDLERS = CHECK_HANDLERS.copy()
+
+
+def inspect_server_web(host, client, report_root, report_id, checks=None):
+    """Run audited checks with a fixed configuration and a unique report name."""
+    if not re.fullmatch(r"[0-9a-f]{32}", report_id):
+        raise ValueError("Invalid report ID")
+    selected = checks if checks is not None else list(WEB_CHECK_HANDLERS)
+    if not selected or any(name not in WEB_CHECK_HANDLERS for name in selected):
+        raise ValueError("Invalid inspection checks")
+    root = Path(report_root)
+    if root.is_symlink():
+        raise ValueError("Invalid report directory")
+    root.mkdir(parents=True, mode=0o700, exist_ok=True)
+    root = root.resolve()
+    final = root / f"{report_id}.md"
+    body = root / f"{report_id}.body"
+    if final.exists() or final.is_symlink() or body.exists() or body.is_symlink():
+        raise ValueError("Report ID already exists")
+
+    body_created = False
+    final_created = False
+    with web_output() as output_state:
+        try:
+            hostname, _, status = run_command(client, "hostname")
+            if status != 0:
+                raise RuntimeError("Hostname check failed")
+            alerts = []
+            # Both files are exclusive: a repeated task never replaces a prior report.
+            body_fd = os.open(body, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            body_created = True
+            with os.fdopen(body_fd, "w", encoding="utf-8"):
+                pass
+            for name in selected:
+                WEB_CHECK_HANDLERS[name](client, str(body), DEFAULT_CONFIG, alerts)
+            if output_state["errors"]:
+                raise RuntimeError("One or more inspection checks failed")
+            final_fd = os.open(final, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            final_created = True
+            with os.fdopen(final_fd, "w", encoding="utf-8") as report:
+                report.write(f"# 服务器巡检报告 - {hostname.strip()} ({host})\n\n")
+                report.write("## 风险摘要\n\n")
+                report.write("\n".join(f"- {alert}" for alert in alerts) or "- 未发现达到告警阈值的风险项。")
+                report.write("\n\n---\n\n")
+                report.write(body.read_text(encoding="utf-8"))
+            return {"status": "succeeded", "alerts": alerts, "report_id": report_id, "report_path": str(final), "error": None}
+        except Exception:
+            if final_created:
+                final.unlink(missing_ok=True)
+            return {"status": "failed", "alerts": [], "report_id": None, "report_path": None, "error": "巡检失败"}
+        finally:
+            if body_created:
+                body.unlink(missing_ok=True)
 
 
 def inspect_server(ip, client, path, config):

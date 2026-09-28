@@ -2,9 +2,9 @@
 
 一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装和巡检报告能力。
 
-> 当前仓库以交互式命令行为主，适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版。
+> CLI 适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版；WebUI 第一版要求客户机预装 Python 3.14 和 systemd。
 
-WebUI 尚未实现；第一版以 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md) 为准，早期架构草案仅作历史参考。
+WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md)；早期架构草案仅作历史参考。
 
 ---
 
@@ -193,6 +193,27 @@ Agent 使用本仓库时还应遵守 `CLAUDE.md` 中的项目规则：先读取�
 ---
 
 ## 使用方式
+
+### WebUI 第一版
+
+WebUI 只使用自身数据库中的资产，**不读取或导入** CLI 的 `hosts`。管理员在页面登记主机、登录账号及密钥或密码；生成的 SSH 公钥需自行配置到服务器。首版只开放只读巡检和历史报告，不提供任意命令或服务修改。CLI 的主机来源和报告目录选择保持不变。
+
+Linux 交付包由构建环境生成的 wheel 与 `scripts/install_webui.sh` 组成，目标机不需要源码仓库。管理员在目标机本机终端执行（脚本会创建专用服务账号、安装目录与独立虚拟环境，交互设置管理员口令后启动服务）：
+
+```bash
+sudo bash install_webui.sh /absolute/path/autodeploykit-0.1.0-py3-none-any.whl
+```
+
+脚本默认将程序放在 `/opt/autodeploykit`，数据和报告放在 `/var/lib/autodeploykit`，加密根密钥放在 `/etc/autodeploykit/master.key`；可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR` 为互不重叠的绝对目录。服务只监听 `127.0.0.1:8765`，须由管理员另行配置同机反向代理的 HTTPS 与内网访问限制。数据库与根密钥必须分别备份；任一丢失时不要重建密钥覆盖旧数据库。客户机管理员有权限读取已安装的 Python 代码，文件权限只限制普通用户。
+
+本地开发时，使用 Python 3.14 的独立虚拟环境安装 `.[web]`；在**仓库外**准备数据目录和根密钥目录，以本机终端运行初始化入口后再启动服务：
+
+```bash
+autodeploykit-webui-init --data-dir /absolute/data/path --key-file /another/absolute/path/master.key
+WEBUI_DATA_DIR=/absolute/data/path WEBUI_KEY_FILE=/another/absolute/path/master.key python -m uvicorn webui.app:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
+```
+
+WebUI 报告只写入数据目录下的 `reports/`。目标与跳板机沿用现有 Paramiko 主机密钥自动接受行为，首次连接无法验证服务器身份；正式部署前需评估中间人风险并限制为受控网络。未经确认不要将服务暴露到公网。
 
 ### 1. 通用 CLI
 
