@@ -113,6 +113,7 @@
 │  └─ get-pip.py
 └─ utils/
    ├─ ssh_utils.py
+   ├─ software_check.py
    ├─ file_utils.py
    ├─ output.py
    ├─ menu_runner.py
@@ -224,6 +225,30 @@ python cli.py server_check webservers
 - 输出形式：按 `组名 / 月份 / 主机报告.md` 归档
 
 并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
+
+## 软件启动检测工具
+
+`utils.software_check.check_software_started` 接收已有 SSH 连接，仅执行查看类命令，不负责安装、启动或重启软件。调用方应沿用从 `hosts` 读取配置并通过 `utils.ssh_utils` 建立连接的流程。
+
+```python
+from utils.software_check import check_software_started
+
+result = check_software_started(
+    client,
+    service_name="nginx",
+    process_name="nginx",
+    retries=3,
+    interval=2,
+)
+started = result["success"]
+details = result["checks"]
+warnings = result["warnings"]
+```
+
+- 至少指定 `service_name` 或 `process_name`；指定的运行状态检查必须全部通过。服务名省略 `.service` 时自动补齐；systemd 检查要求服务为 `loaded/active/running`，并通过 `ps` 验证 `MainPID` 仍存活；进程名为 `ps -C` 使用的可执行文件名，不是命令行片段，僵尸、已停止或暂停的进程不算运行。
+- 默认读取服务当前启动批次的 journal；无法取得 `InvocationID` 时读取最近 5 分钟日志。可用 `log_path="/var/log/example/app.log"` 改为读取指定文件末尾 `log_lines` 行（默认 100 行，可能包含历史启动记录）。
+- 日志默认只提供诊断；设置 `success_pattern=r"ready for connections"` 后，还必须在日志中匹配该正则（忽略大小写）。错误关键字记录在 `checks["logs"]["error_matches"]` 和 `warnings` 中，不直接判定启动失败；读取日志失败且指定了成功关键字时，检测不通过。
+- 返回整体 `success`、实际 `attempts`、各项 `checks` 和 `warnings`；检查项保留命令、标准输出、错误输出、退出码和通过状态。`retries` 为总尝试次数，`interval` 为尝试间隔，不是 SSH 超时；该工具验证运行状态，不代表业务接口已经就绪。
 
 ---
 
