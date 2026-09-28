@@ -1,130 +1,317 @@
-import os
-import json
+import base64
 import datetime
+import hashlib
+import json
+import os
+import re
+import secrets
+import shlex
+import string
+from getpass import getpass
+
 from colorama import Fore
-from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date, remote_download_or_upload
-from utils.output import print_info, print_error, print_success, print_warning
-from utils.ssh_utils import run_command, run_command_live
+
 from utils.choice import confirm_yes_no, menu_choice
+from utils.file_utils import get_eol_date, get_stable_version, remote_download_or_upload, upload_file
+from utils.output import print_error, print_info, print_success, print_warning
+from utils.ssh_utils import run_command, run_command_live
+
+RABBITMQ_VERSION = "4.2.0"
+ERLANG_VERSION = "27.3.4.11"
+# GitHub release asset digests; cached/team-library packages must match as well.
+RABBITMQ_SHA256 = "5eaebefc8d2e3e24fe123a38769577f98d2085e56429bc5024fd437e65514c85"
+ERLANG_SHA256 = {
+    "7": "598514aba44f023b4e0d8bcf6803cd05b07da40901f6680354f21b63be91c76a",
+    "8": "06adab0e4ba188d151b99e285aa8c291bc3b74918787e08d765189ffe46c9a8e",
+    "9": "9f299130d6bcb2218dfc9a6f6d0a5bff5ba4a5ab8bad4a70e7913bc41f941c6a",
+}
+ERLANG_VERSION_COMMAND = (
+    "erl -noshell -eval "
+    + shlex.quote(
+        '{ok, V} = file:read_file(filename:join([code:root_dir(), "releases", '
+        'erlang:system_info(otp_release), "OTP_VERSION"])), '
+        '{ok, _} = application:ensure_all_started(crypto), io:put_chars(V), halt().'
+    )
+)
+
+
+def _erlang_rpm_series(os_release):
+    values = {}
+    for line in os_release.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in ("ID", "VERSION_ID"):
+            parts = shlex.split(value, comments=True)
+            if len(parts) != 1:
+                raise ValueError("无效的 /etc/os-release 字段：" + key)
+            values[key] = parts[0]
+    distro, version = values.get("ID", "").lower(), values.get("VERSION_ID", "")
+    if distro == "openeuler" and version == "22.03":
+        return "8"
+    major = version.split(".")[0]
+    if distro in ("centos", "rhel", "rocky", "almalinux", "ol") and major in ERLANG_SHA256:
+        return major
+    raise ValueError("不支持的系统：" + distro + " " + version)
+
 
 def install_rabbitmq(client, version=None):
-
-    if confirm_yes_no("是否确定安装？", default=False):
-        default_install_path = "/usr/local/rabbitmq" + '.'.join(version.split('.')[:2])
-        install_path = input(Fore.MAGENTA + f"请输入RabbitMQ安装目录 (默认: {default_install_path}): ").strip()
-        if not install_path:
-            install_path = default_install_path
-        print_info("RabbitMQ将安装到: " + install_path + "\n")
-        
-        default_data_dir = "/data/rabbitmq"
-        data_dir = input(Fore.MAGENTA + f"请输入RabbitMQ数据目录 (默认: {default_data_dir}): ").strip()
-        if not data_dir:
-            data_dir = default_data_dir
-        print_info("RabbitMQ数据目录: " + data_dir)
-        
-        default_log_dir = "/var/log/rabbitmq"
-        log_dir = input(Fore.MAGENTA + f"请输入RabbitMQ日志目录 (默认: {default_log_dir}): ").strip()
-        if not log_dir:
-            log_dir = default_log_dir
-        print_info("RabbitMQ日志目录: " + log_dir + "\n")
-        
-        print_info("开始安装RabbitMQ " + version + "......\n")
-
-        print_info("创建rabbitmq用户")
-        output, status = run_command_live(client, "getent group rabbitmq || groupadd rabbitmq")
-        output, status = run_command_live(client, "id rabbitmq &>/dev/null || useradd -r -g rabbitmq rabbitmq -s /sbin/nologin")
-        print_success("创建rabbitmq用户完成。\n")
-
-        print_info("创建数据和日志目录")
-        output, status = run_command_live(client, f"mkdir -p {data_dir} && chown -R rabbitmq:rabbitmq {data_dir}")
-        output, status = run_command_live(client, f"mkdir -p {log_dir} && chown -R rabbitmq:rabbitmq {log_dir}")
-        print_success("创建数据和日志目录完成。\n")
-
-        print_info("开始下载源码包并安装")
-        local_path = os.path.join("packages", "rabbitmq-" + version + "-linux-glibc2.28-x86_64.tar.xz")
-        url = "https://dev.rabbitmq.com/get/Downloads/RabbitMQ-8.0/rabbitmq-" + version + "-linux-glibc2.28-x86_64.tar.xz"
-        remote_path = "/usr/local/src/rabbitmq-" + version + "-linux-glibc2.28-x86_64.tar.xz"
-
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
-            return None
-                
-        cmds = [
-            "tar xvf " + remote_path + " -C /usr/local/src/",
-            "mv /usr/local/src/rabbitmq-" + version + "-linux-glibc2.28-x86_64 " + install_path,
-            "chown -R rabbitmq:rabbitmq " + install_path,
-            "printf '\nPATH=$PATH:" + install_path + "/bin\nexport PATH\n' >> /etc/profile",
-            "source /etc/profile",
-        ]
-
-        cmd_status = 0
-        for cmd in cmds:
-            output, cmd_status = run_command_live(client, cmd)
-            if cmd_status != 0 :
-                print_error(f"\n命令执行失败: {cmd}")
-                print_warning("中止当前操作，返回上一级菜单\n")
-                break
-
-        if cmd_status == 0:
-            current_version, _, _ = run_command(client, r'rabbitmq -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-            current_version = current_version.strip() if current_version else ""
-            print_info("\n安装完成！\n当前rabbitmq版本：" + current_version)
-            
-            if confirm_yes_no("是否自动配置my.cnf文件？", default=False):
-                print_success("正在配置my.cnf文件...")
-                local_path = os.path.join("config", "rabbitmq", "my.cnf")
-                remote_path = "/etc/my.cnf"
-                upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_DATA_DIR': data_dir, 'MYSQL_LOG_DIR': log_dir})
-                cmd = "chown rabbitmq:rabbitmq /etc/my.cnf"
-                run_command_live(client, cmd)
-                print_success("✓ my.cnf文件配置完成")
-                print_warning("⚠ 建议首次初始化之前根据实际需求修改my.cnf文件！")
-            else:
-                print_warning("→ 已跳过my.cnf文件配置")
-
-            if confirm_yes_no("是否初始化RabbitMQ服务？", default=False):
-                print_success("正在初始化RabbitMQ服务，请稍候...")
-                run_command_live(client, install_path + "/bin/rabbitmqd --initialize --user=rabbitmq")
-                print_success("✓ RabbitMQ服务初始化完成")
-                print_info("注意: 初始化完成后会生成临时密码，请查看日志文件获取密码")
-                print_info("日志位置: " + data_dir + "/error.log\n")
-            else:
-                print_warning("→ 已跳过RabbitMQ服务初始化")
-
-            if confirm_yes_no("是否配置systemd守护进程？", default=False):
-                print_success("正在配置systemd守护进程...")
-                local_path = os.path.join("config", "rabbitmq", "rabbitmqd.service")
-                remote_path = "/etc/systemd/system/rabbitmqd.service"
-                upload_file_with_vars(client, local_path, remote_path, {'MYSQL_INSTALL_PATH': install_path, 'MYSQL_DATA_DIR': data_dir, 'MYSQL_LOG_DIR': log_dir})
-                run_command_live(client, "systemctl daemon-reload")
-                print_success("✓ systemd守护进程配置完成")
-            else:
-                print_warning("→ 已跳过systemd守护进程配置")
-
-            if confirm_yes_no("是否为RabbitMQ服务配置开机自启动？", default=False):
-                print_success("正在配置开机自启动...")
-                run_command_live(client, "systemctl enable rabbitmqd")
-                print_success("✓ RabbitMQ服务开机自启动配置完成")
-            else:
-                print_warning("→ 已跳过开机自启动配置")
-
-            if confirm_yes_no("是否启动RabbitMQ服务？", default=False):
-                print_success("正在启动RabbitMQ服务...")
-                _, status = run_command_live(client, "systemctl start rabbitmqd")
-                if status != 0:
-                    print_error("✗ RabbitMQ服务启动失败！")
-                else:
-                    print_success("✓ RabbitMQ服务启动成功")
-                    default_password, _, _ = run_command(client, "grep -a \"A temporary password is generated\" /var/log/rabbitmq/rabbitmqd-error.log | tail -n1 | awk '{print $NF}'")
-                    print_info("请手动连接RabbitMQ并修改初始root密码！")
-                    print_info(f"默认root密码为：{default_password}")
-            else:
-                print_warning("→ 已跳过RabbitMQ服务启动")
-
+    # ponytail: 固定已核验的版本和校验和；需要其他版本时先核对兼容矩阵及发布资产。
+    if version is not None and version != RABBITMQ_VERSION:
+        print_error("当前通用二进制安装仅支持 RabbitMQ " + RABBITMQ_VERSION)
+        return
+    install_path = "/usr/local/rabbitmq_server4.2"
+    profile_path = "/etc/profile.d/rabbitmq.sh"
+    service_path = "/etc/systemd/system/rabbitmq-server.service"
+    installed, error, status = run_command(client, "rpm -q rabbitmq-server")
+    if status == 0:
+        print_info("RabbitMQ 已安装：" + installed)
+        return
+    if status != 1:
+        print_error("无法检查 RabbitMQ RPM：" + (error or installed))
+        return
+    installed, error, status = run_command(client, "command -v rabbitmqctl")
+    if status == 0:
+        print_info("已存在 RabbitMQ CLI，不重复安装：" + installed)
+        return
+    if status != 1:
+        print_error("无法检查 RabbitMQ CLI：" + error)
+        return
+    installed, error, status = run_command(client, "find /usr/local -maxdepth 3 -name rabbitmqctl -print")
+    if status != 0 or installed:
+        print_error("发现已有 RabbitMQ 或无法检查安装目录：" + (error or installed))
+        return
+    for path in (install_path, profile_path, service_path, "/usr/lib/systemd/system/rabbitmq-server.service"):
+        _, error, status = run_command(client, "test -e " + path + " || test -L " + path)
+        if status != 1:
+            print_error("安装目标已存在或无法检查，不会覆盖：" + path + " " + error)
+            return
+    os_release, error, status = run_command(client, "cat /etc/os-release")
+    if status != 0:
+        print_error("无法识别目标系统：" + error)
+        return
+    try:
+        el_version = _erlang_rpm_series(os_release)
+    except ValueError as exc:
+        print_error(str(exc))
+        return
+    arch, error, status = run_command(client, "uname -m")
+    if status != 0 or arch != "x86_64":
+        print_error("当前已核验的 Erlang RPM 仅支持 x86_64：" + (error or arch))
+        return
+    _, _, status = run_command(client, "command -v dnf")
+    package_manager = "dnf"
+    if status != 0:
+        _, _, status = run_command(client, "command -v yum")
+        if status != 0:
+            print_error("目标主机没有 dnf 或 yum，无法安装依赖")
+            return
+        package_manager = "yum"
+    erl_path, error, status = run_command(client, "command -v erl")
+    if status not in (0, 1):
+        print_error("无法检查 Erlang：" + error)
+        return
+    install_erlang = status == 1
+    if not install_erlang:
+        current_erlang, error, status = run_command(client, ERLANG_VERSION_COMMAND)
+        if status != 0 or not re.fullmatch(r"27(?:\.[0-9]+)+", current_erlang):
+            print_error("现有 Erlang 无法运行或不是兼容的 27.x，不会自动替换：" + (error or current_erlang))
+            return
+        if not re.fullmatch(r"/[A-Za-z0-9_./+-]+", erl_path):
+            print_error("无法安全地将 Erlang 路径用于 systemd：" + erl_path)
+            return
+        print_info("复用 Erlang " + current_erlang)
     else:
-        print_warning(f"返回上一级")
+        erl_path = "/usr/bin/erl"
 
-    return None
+    erlang_package = f"erlang-{ERLANG_VERSION}-1.el{el_version}.x86_64.rpm"
+    rabbitmq_package = f"rabbitmq-server-generic-unix-{RABBITMQ_VERSION}.tar.xz"
+    print_warning("RabbitMQ 4.2 社区支持已于 2026-07-31 结束；本流程按指定版本安装")
+    if el_version == "7":
+        print_warning("CentOS/RHEL 7 已结束支持，使用官方一次性 el7 Erlang RPM")
+    erlang_action = f"安装 Erlang {ERLANG_VERSION}（el{el_version} RPM）" if install_erlang else f"复用 Erlang {current_erlang}"
+    print_info(
+        f"将通过 {package_manager} 安装 socat、ncurses-compat-libs、wget、xz；{erlang_action}；"
+        f"下载包到 /usr/local/src；将 RabbitMQ {RABBITMQ_VERSION} 解压到 {install_path}；"
+        f"写入 {profile_path}。不会添加 RabbitMQ 软件源、升级 OpenSSL 或修改防火墙。"
+    )
+    if not confirm_yes_no("是否确认以上安装操作？", default=False):
+        print_warning("已取消 RabbitMQ 安装")
+        return
+    for command in (f"{package_manager} -y install socat ncurses-compat-libs wget xz", "mkdir -p /usr/local/src"):
+        output, status = run_command_live(client, command)
+        if status != 0:
+            print_error("安装准备失败：" + (output or command))
+            return
+    packages = [("rabbitmq-server", RABBITMQ_VERSION, rabbitmq_package, RABBITMQ_SHA256)]
+    if install_erlang:
+        packages.insert(0, ("erlang-rpm", ERLANG_VERSION, erlang_package, ERLANG_SHA256[el_version]))
+    for repository, release, filename, checksum in packages:
+        url = f"https://github.com/rabbitmq/{repository}/releases/download/v{release}/{filename}"
+        remote_path = "/usr/local/src/" + filename
+        local_path = os.path.join("packages", filename)
+        if os.path.isfile(local_path):
+            try:
+                upload_file(client, local_path, remote_path)
+            except RuntimeError as exc:
+                print_error(str(exc))
+                return
+        elif not remote_download_or_upload(client, url, local_path, remote_path):
+            return
+        digest, error, status = run_command(client, "sha256sum " + remote_path)
+        if status != 0 or not digest.split() or digest.split()[0] != checksum:
+            print_error("安装包 SHA256 校验失败，不会安装或解压：" + filename + " " + error)
+            return
+    if install_erlang:
+        for command in (
+            "rpm -ivh --test /usr/local/src/" + erlang_package,
+            "rpm -ivh /usr/local/src/" + erlang_package,
+        ):
+            output, status = run_command_live(client, command)
+            if status != 0:
+                print_error("Erlang RPM 安装失败；不会强制忽略依赖或升级 OpenSSL：" + output)
+                return
+        current_erlang, error, status = run_command(client, ERLANG_VERSION_COMMAND)
+        if status != 0 or current_erlang != ERLANG_VERSION:
+            print_error("Erlang 版本或 crypto 运行验证失败：" + (error or current_erlang))
+            return
+    # Extract directly into a new directory instead of moving an existing tree.
+    output, status = run_command_live(
+        client,
+        "mkdir " + install_path + " && tar -xJf /usr/local/src/" + rabbitmq_package
+        + " --strip-components=1 -C " + install_path,
+    )
+    if status != 0:
+        print_error("RabbitMQ 解压失败；保留现场，不会自动删除目录：" + output)
+        return
+    ctl = install_path + "/sbin/rabbitmqctl"
+    installed, error, status = run_command(client, ctl + " version")
+    if status != 0 or installed != RABBITMQ_VERSION:
+        print_error("RabbitMQ CLI 版本验证失败：" + (error or installed))
+        return
+    profile = 'export PATH="$PATH:' + install_path + '/sbin"\n'
+    output, status = run_command_live(
+        client, "(set -C; printf %s " + shlex.quote(profile) + " > " + profile_path + ")"
+    )
+    if status != 0:
+        print_error("环境变量配置失败，不会覆盖已有文件：" + output)
+        return
+    print_success(f"RabbitMQ {installed} 安装完成：{install_path}；Erlang {current_erlang}")
+    _configure_rabbitmq(client, install_path, erl_path)
+
+
+def _configure_rabbitmq(client, install_path, erl_path):
+    if confirm_yes_no("是否启用 rabbitmq_management 管理插件（写入离线插件配置）？", default=False):
+        output, status = run_command_live(
+            client, install_path + "/sbin/rabbitmq-plugins --offline enable rabbitmq_management"
+        )
+        if status != 0:
+            print_error("启用管理插件失败：" + output)
+            return
+        print_info("管理界面端口为 15672；不会关闭防火墙或放开 guest 的远程访问")
+    _, _, status = run_command(client, "test -d /run/systemd/system")
+    if status != 0:
+        print_warning("未检测到运行中的 systemd，跳过服务配置及管理员创建")
+        return
+    service_path = "/etc/systemd/system/rabbitmq-server.service"
+    service = (
+        "[Unit]\nDescription=RabbitMQ broker\nAfter=syslog.target network.target\n\n"
+        "[Service]\nType=simple\nUser=root\nGroup=root\n"
+        f'Environment="PATH={os.path.dirname(erl_path)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"\n'
+        f"WorkingDirectory={install_path}\nExecStart={install_path}/sbin/rabbitmq-server\n"
+        f"ExecStop={install_path}/sbin/rabbitmqctl stop\nLimitNOFILE=65536\n\n"
+        "[Install]\nWantedBy=multi-user.target\n"
+    )
+    print_info("拟写入 " + service_path + "，随后执行 systemctl daemon-reload：\n" + service)
+    print_warning("按文档使用 root 运行服务；生产环境建议另行评估专用账号")
+    if not confirm_yes_no("是否创建以上 systemd 服务并重新加载配置？", default=False):
+        print_info("服务未启动，已跳过 systemd 配置及管理员创建")
+        return
+    for command in (
+        "(set -C; printf %s " + shlex.quote(service) + " > " + service_path + ")",
+        "systemctl daemon-reload",
+    ):
+        output, status = run_command_live(client, command)
+        if status != 0:
+            print_error("systemd 配置失败，不会覆盖已有服务：" + output)
+            return
+    if not confirm_yes_no("是否执行 systemctl start rabbitmq-server 并设置开机自启？", default=False):
+        print_info("服务未启动，已跳过管理员创建")
+        return
+    for command in ("systemctl start rabbitmq-server", "systemctl enable rabbitmq-server"):
+        output, status = run_command_live(client, command)
+        if status != 0:
+            print_error("服务启动或自启配置失败：" + output)
+            return
+    ctl = install_path + "/sbin/rabbitmqctl"
+    for command in (
+        ctl + " --timeout 60 await_startup",
+        "systemctl is-active rabbitmq-server",
+        ctl + " status",
+    ):
+        output, error, status = run_command(client, command)
+        if status != 0:
+            print_error("RabbitMQ 启动验证失败，请检查主机名解析及服务日志：" + (error or output))
+            return
+    print_success("RabbitMQ 服务已启动并设置开机自启")
+    _create_rabbitmq_admin(client, ctl)
+
+
+def _create_rabbitmq_admin(client, ctl):
+    users, error, status = run_command(client, ctl + " list_users --formatter=json")
+    try:
+        users = json.loads(users)
+        if status != 0 or not isinstance(users, list) or any(
+            not isinstance(user, dict) or "user" not in user for user in users
+        ):
+            raise ValueError("无法读取用户列表")
+    except ValueError:
+        print_error("无法确认现有用户，跳过管理员创建：" + error)
+        return
+    if any(user["user"] == "admin" for user in users):
+        print_warning("admin 已存在，不修改其密码、角色或权限")
+        return
+    if not confirm_yes_no("是否创建 admin 管理员并授予 / vhost 的配置、写入、读取权限？", default=False):
+        return
+    try:
+        password = getpass("请输入随机管理员密码（至少 12 位，含大小写、数字及特殊符号）：")
+        if (
+            len(password) < 12
+            or not all(
+                any(char in group for char in password)
+                for group in (string.ascii_lowercase, string.ascii_uppercase, string.digits, string.punctuation)
+            )
+            or any(char not in string.ascii_letters + string.digits + string.punctuation for char in password)
+        ):
+            print_error("密码不符合要求，未创建管理员")
+            return
+        if getpass("请再次输入管理员密码：") != password:
+            print_error("两次密码不一致，未创建管理员")
+            return
+    except (EOFError, KeyboardInterrupt):
+        print_warning("已取消管理员创建")
+        return
+    # Fresh generic installations use rabbit_password_hashing_sha256 by default.
+    salt = secrets.token_bytes(4)
+    hashed = base64.b64encode(salt + hashlib.sha256(salt + password.encode()).digest()).decode()
+    _, _, status = run_command(
+        client, ctl + " add_user admin " + shlex.quote(hashed) + " --pre-hashed-password"
+    )
+    if status != 0:
+        print_error("管理员创建失败，请检查服务日志；不会输出密码或密码哈希")
+        return
+    for command in (
+        ctl + " set_user_tags admin administrator",
+        ctl + ' set_permissions -p / admin ".*" ".*" ".*"',
+    ):
+        output, status = run_command_live(client, command)
+        if status != 0:
+            print_error("admin 已创建，但角色或权限设置失败，请人工核查：" + output)
+            return
+    users, error, status = run_command(client, ctl + " list_users")
+    if status != 0:
+        print_error("管理员设置完成，但无法读取用户列表：" + error)
+        return
+    print_success("admin 管理员配置完成：\n" + users)
+
 
 def upgrade_rabbitmq(client, version=None):
     # TODO：实现升级逻辑

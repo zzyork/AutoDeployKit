@@ -39,8 +39,17 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 - Nginx 管理
 - MySQL 管理
 - Redis 管理
+- RabbitMQ 安装（Erlang 官方 RPM + RabbitMQ 通用二进制包；默认 RabbitMQ `4.2.0` / Erlang `27.3.4.11`）
 
-> 仓库中虽然存在 `rabbitmq_manager.py`，但当前 `middleware_ops/main.py` 未注册该入口，因此不属于当前 CLI 可直接使用的模块。
+> 安装前检查系统、架构及已有安装。CentOS/RHEL 7/8/9、Rocky Linux、AlmaLinux、Oracle Linux 根据主版本选择 el7/el8/el9 RPM；openEuler 22.03 固定使用 el8 RPM，不升级 OpenSSL。当前已核验的安装包仅支持 `x86_64`。已有可用 Erlang 27.x 会复用，其他版本不会自动替换。
+
+> 通过 `dnf` / `yum` 安装 `socat`、`ncurses-compat-libs`、`wget`、`xz`；安装包保存到 `/usr/local/src`，RabbitMQ 安装到 `/usr/local/rabbitmq_server4.2`，环境变量写入 `/etc/profile.d/rabbitmq.sh`。不添加 RabbitMQ 软件源。优先上传 `packages/` 中的同名安装包，否则从 GitHub 下载，失败后复用现有本地下载上传流程；所有安装包均按官方发布资产的 SHA256 校验。团队软件库的包也可按原文件名放入 `packages/`，但必须与官方包一致。
+
+> 管理插件、systemd 服务、启动及开机自启、admin 管理员均需分别确认，默认跳过。systemd 按参考文档使用 root 运行；密码交互输入，要求至少 12 位并包含大小写字母、数字和特殊符号，只向服务器传输加盐 SHA256 哈希。不覆盖已有安装目录、PATH 文件或服务，不修改已有 admin，不关闭防火墙，不放开 guest 的远程访问。
+
+> RabbitMQ 4.2.0 不兼容 Erlang 25.3.2，因此未沿用文档中的 Erlang 版本。RabbitMQ 4.2 社区支持已于 2026-07-31 结束，CentOS 7 也已结束支持；本流程固定版本并提示风险，不自动切换为最新版本。参考：[通用二进制安装](https://www.rabbitmq.com/docs/install-generic-unix)、[Erlang 兼容矩阵](https://www.rabbitmq.com/docs/which-erlang)、[支持时间表](https://www.rabbitmq.com/release-information)、[Erlang 27.3.4.11 RPM](https://github.com/rabbitmq/erlang-rpm/releases/tag/v27.3.4.11)。
+
+> RabbitMQ 的升级、备份和回滚尚未接入 CLI。
 
 ### 3. 软件管理 `software_ops`
 
@@ -96,7 +105,7 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 │  ├─ nginx_manager.py
 │  ├─ mysql_manager.py
 │  ├─ redis_manager.py
-│  └─ rabbitmq_manager.py      # 文件存在，但未在菜单中启用
+│  └─ rabbitmq_manager.py      # CLI 仅接入安装入口
 ├─ software_ops/
 │  ├─ main.py
 │  ├─ docker_manager.py
