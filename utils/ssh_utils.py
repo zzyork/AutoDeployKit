@@ -143,14 +143,14 @@ def close_ssh_client(client):
             _close_one(proxy_client)
 
 
-def run_command(client, command):
+def run_command(client, command, strip_output=True):
     """执行远程命令，加载环境变量"""
     full_command = _build_remote_command(client, command)
     stdin, stdout, stderr = client.exec_command(full_command)
-    out = stdout.read().decode().strip()
+    out = stdout.read().decode()
     err = stderr.read().decode().strip()
     status = stdout.channel.recv_exit_status()
-    return out, err, status
+    return out.strip() if strip_output else out, err, status
 
 
 def run_command_live(client, command):

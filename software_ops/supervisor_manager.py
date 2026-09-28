@@ -194,9 +194,18 @@ def configure_ini(client, replace=False):
             return
 
     upload_file_with_vars(client, str(local_path), ini_path, variables)
-    actual, err, read_status = run_command(client, f"cat {shlex.quote(ini_path)}")
-    if read_status != 0 or actual != config.strip():
-        print_error(f"配置写入后校验失败：{err or ini_path}；未执行 supervisorctl update")
+    actual, err, read_status = run_command(client, f"cat {shlex.quote(ini_path)}", strip_output=False)
+    if read_status != 0:
+        print_error(f"配置回读失败：{ini_path}（退出码 {read_status}）：{err or '无错误输出'}；未执行 supervisorctl update")
+        return
+    if actual != config:
+        expected_lines = config.splitlines(keepends=True)
+        actual_lines = actual.splitlines(keepends=True)
+        first_diff = next(
+            (i for i, (expected, found) in enumerate(zip(expected_lines, actual_lines), 1) if expected != found),
+            min(len(expected_lines), len(actual_lines)) + 1,
+        )
+        print_error(f"配置回读内容与模板不一致：{ini_path}（首个差异在第 {first_diff} 行；本地 {len(expected_lines)} 行，远端 {len(actual_lines)} 行）；未执行 supervisorctl update")
         return
     print_success(f"ini文件 {ini_path} {'替换' if replace else '创建'}成功")
     _, update_status = run_command_live(client, "supervisorctl update")
