@@ -4,6 +4,8 @@
 
 > 当前仓库以交互式命令行为主，适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版。
 
+WebUI 尚未实现；第一版以 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md) 为准，早期架构草案仅作历史参考。
+
 ---
 
 ## 当前可用模块

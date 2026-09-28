@@ -5,7 +5,6 @@ description = "Interactive SSH automation toolkit for Linux server operations"
 requires-python = ">=3.9"
 readme = "README.md"
 dependencies = [
-    "pip~=26.1.2",
     "typer~=0.16.0",
     "rich~=14.0.0",
     "paramiko~=3.5.1",
