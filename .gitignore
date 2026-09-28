@@ -149,4 +149,3 @@ hosts
 .tmp_firewalld
 /server_check/reporters/
 tests/*
-!tests/test_software_check.py

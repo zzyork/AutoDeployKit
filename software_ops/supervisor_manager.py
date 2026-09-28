@@ -9,6 +9,7 @@ from string import Template
 from utils.choice import confirm_yes_no, menu_choice
 from utils.file_utils import upload_file, upload_file_with_vars
 from utils.output import print_error, print_info, print_success, print_warning
+from utils.software_check import check_software_started
 from utils.ssh_utils import run_command, run_command_live
 
 current_version, status, stable_version = None, None, None
@@ -84,10 +85,29 @@ def install_supervisor(client):
             print_success("systemd守护进程自启配置完成\n")
 
         if confirm_yes_no("是否启动Supervisord服务？"):
-            run_command_live(client, "systemctl start supervisord")
-            print_success("Supervisord服务启动完成\n")
-            current_version, _, status = run_command(client, r'supervisord -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-            current_version = current_version.strip() if current_version else ""
+            output, start_status = run_command_live(client, "systemctl start supervisord")
+            if start_status != 0:
+                print_error(f"Supervisord启动命令失败（退出码 {start_status}）：{output or '无输出'}")
+            print_info("正在检查Supervisord的systemd状态、主进程和日志...")
+            result = check_software_started(client, service_name="supervisord", retries=3, interval=2)
+            for warning in result["warnings"]:
+                print_warning(warning)
+            if start_status != 0 or not result["success"]:
+                print_error(f"Supervisord启动验证未通过（已检测 {result['attempts']} 次）")
+                for name, check in result["checks"].items():
+                    if check["success"] is True:
+                        continue
+                    detail = "\n".join(text for text in (check["stdout"], check["stderr"]) if text)
+                    print_info(f"{name}（退出码 {check['exit_code']}）：\n{detail or '未返回检测证据'}")
+                print_warning("软件已安装，但启动未确认成功；请检查服务配置和日志")
+                return
+            print_success("Supervisord服务已通过启动状态检测\n")
+            for line in result["checks"].get("logs", {}).get("error_matches", []):
+                print_warning(line)
+        else:
+            print_warning("已跳过启动Supervisord服务，未执行启动状态检测")
+        current_version, _, status = run_command(client, r'supervisord -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version = current_version.strip() if current_version else ""
         print_info("安装完成！当前supervisor版本：" + current_version)
 
     else:
