@@ -1,6 +1,7 @@
 import os
 import json
 import datetime
+import re
 from colorama import Fore
 from utils.file_utils import download_file, upload_file, upload_file_with_vars, get_stable_version, get_eol_date, remote_download_or_upload
 from utils.output import print_info, print_error, print_success, print_warning
@@ -42,7 +43,7 @@ def install_mysql(client, version=None):
 
         print_info("开始下载源码包并安装")
         local_path = os.path.join("packages", "mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz")
-        url = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz"
+        url = "https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz"
         remote_path = "/usr/local/src/mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz"
 
         wget_cmd = f"cd /usr/local/src && wget {url}"
@@ -472,47 +473,33 @@ def manage_mysql(client):
     current_version, _, status = run_command(client, r'mysql -V 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
     current_version = current_version.strip() if current_version else ""
     lts_version = ""
-    try:
-        version_status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/8.0.html", "8.0.")
-    except Exception:
-        version_status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", "8.0.")
+    version_status, info = get_stable_version(
+        "https://repo.mysql.com/yum/mysql-8.0-community/el/9/x86_64/", "8.0."
+    )
     if version_status == 0:
         lts_version = info
-        print_info("Mysql最新LTS版本为：" + lts_version)
+        print_info("MySQL 8.0 最新版本为：" + lts_version)
     else:
         print_error(info)
-        print_warning("未能自动获取Mysql最新LTS版本，请手动指定要安装的版本号")
+        print_warning("未能自动获取 MySQL 8.0 最新版本，请手动指定要安装的版本号")
     while True:
         print("========== Mysql软件管理 ==========")
         if status != 0 or not current_version or current_version == "":
             if lts_version:
-                print("1. 安装 Mysql 8.0 最新LTS版本")
-            print("2. 安装其他版本的 Mysql （手动指定版本号）")
+                print("1. 安装 MySQL 8.0 最新版本")
+            print("2. 指定 MySQL 8.0 版本安装")
             print("0. 返回/跳过")
             valid_choices = ['1', '2', '0'] if lts_version else ['2', '0']
             choice = menu_choice("请选择操作编号: ", valid_choices=valid_choices, default="2" if not lts_version else "0")
             if choice == "1":
                 install_mysql(client, version=lts_version)
             elif choice == "2":
-                if lts_version:
-                    while True:
-                        input_version = input(Fore.MAGENTA + "请输入要安装的Mysql版本号 (例如 8.0.46): ").strip()
-                        try:
-                            status, info = get_stable_version("https://downloads.mysql.com/archives/community/", input_version)
-                        except Exception:
-                            status, info = get_stable_version("https://dev.mysql.com/downloads/mysql/", input_version)
-                        if status == 0:
-                            version = info
-                            break
-                        else:
-                            print_error(info)
-                else:
-                    while True:
-                        input_version = input(Fore.MAGENTA + "请输入完整Mysql版本号 (例如 8.0.46): ").strip()
-                        if input_version:
-                            version = input_version
-                            break
-                        print_error("Mysql版本号不能为空")
+                while True:
+                    input_version = input(Fore.MAGENTA + "请输入完整 MySQL 8.0 版本号 (例如 8.0.46): ").strip()
+                    if re.fullmatch(r"8\.0\.\d+", input_version):
+                        version = input_version
+                        break
+                    print_error("请输入完整的 MySQL 8.0 版本号，例如 8.0.46")
                 eol = get_eol_date("mysql", version)
                 if eol != "Unknown":
                     print_warning(f"注意: {eol}")
@@ -524,8 +511,8 @@ def manage_mysql(client):
         else:
             print_success("当前Mysql版本：" + current_version)
             if lts_version:
-                print_info("Mysql最新LTS版本为：" + lts_version)
-                print("1. 升级 Mysql 到最新LTS版本")
+                print_info("MySQL 8.0 最新版本为：" + lts_version)
+                print("1. 升级 MySQL 到最新 8.0 版本")
             print("2. 备份当前 Mysql 版本")
             print("3. 回滚 Mysql 到之前版本")
             print("4. 查看所有备份")
