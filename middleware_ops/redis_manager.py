@@ -392,19 +392,18 @@ def list_redis_backups(client):
             print(f"{i}. {os.path.basename(backup_dir)} (无信息文件)")
 
 def manage_redis(client):
-    global current_version, status, stable_version
-    current_version, _, status = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-    current_version = current_version.strip() if current_version else ""
-    status, info = get_stable_version("http://download.redis.io/releases/", "7.4")
-    if status == 0:
+    stable_status, info = get_stable_version("http://download.redis.io/releases/", "7.4")
+    if stable_status == 0:
         stable_version = info
     else:
         print_error(info)
         return
     print_info("Redis最新稳定版为：" + stable_version)
     while True:
+        current_version, _, version_status = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
+        current_version = current_version.strip() if version_status == 0 and current_version else ""
         print("=== Redis软件管理 ===")
-        if status != 0 or not current_version or current_version == "":
+        if not current_version:
             print("1. 安装 Redis 最新稳定版")
             # TODO: 未来可添加选择版本安装功能
             print("0. 返回/跳过")
