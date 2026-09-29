@@ -240,6 +240,7 @@
 | `scripts/get-pip.py` | 外部 pip 引导脚本；非 AutoDeployKit 业务模块 |
 | `scripts/server_check_offline.sh` | 离线巡检辅助脚本 |
 | `tests/test_rabbitmq_distro.py` | RabbitMQ 发行版识别、架构限制和菜单无写入回归测试 |
+| `tests/test_redis_config.py` | Redis 配置指令替换和敏感值转义回归测试 |
 | `tests/` 中被 `.gitignore` 忽略的其他测试文件 | 工作区可能存在，但不作为版本库清单；新增正式测试时要同步 `.gitignore` 和本文件 |
 
 ## 不纳入内容
@@ -258,3 +259,4 @@
 | 日期 | 变更 |
 | --- | --- |
 | 2026-09-29 | 初始建立仓库目录、文件、模块、功能和入口索引；同步登记根目录 Agent 规则，明确 Agent 优先定位与每次变更同步要求。 |
+| 2026-09-29 | 修复 Redis 配置模板替换、密码传递、配置文件权限和 Redis Exporter systemd 模板，并新增 Redis 配置回归测试。 |

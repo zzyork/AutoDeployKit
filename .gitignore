@@ -151,3 +151,4 @@ hosts
 /tests/*
 !/tests/test_download_fallback.py
 !/tests/test_rabbitmq_install_smoke.py
+!/tests/test_redis_config.py

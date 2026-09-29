@@ -3,12 +3,7 @@ Description=redis-exporter
 Documentation=https://github.com/oliver006/redis_exporter
 
 [Service]
-ExecStart=/usr/local/redis-exporter/redis_exporter -redis.addr ${REDIS_SERVER}:${REDIS_PORT} -redis.password ${REDIS_PASSWORD} -web.listen-address 0.0.0.0:${EXPORTER_PORT}
+ExecStart=/usr/local/redis-exporter/redis_exporter -redis.addr ${REDIS_HOST}:${REDIS_PORT} -redis.password ${REDIS_PASSWORD} -web.listen-address 0.0.0.0:${EXPORTER_PORT}
 Restart=on-failure
 [Install]
 WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable --now redis-exporter
-systemctl status redis-exporter

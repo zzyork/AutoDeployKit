@@ -12,6 +12,44 @@ from utils.output import print_info, print_error, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 from utils.choice import confirm_yes_no, menu_choice
 
+
+def _format_redis_value(value: str, *, quote: bool = False) -> str:
+    """Format one value for Redis's configuration-file parser."""
+    if "\n" in value or "\r" in value:
+        raise ValueError("Redis配置值不能包含换行符")
+    if quote or re.search(r"[\s#\\\"]", value):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return value
+
+
+def _format_systemd_env_value(value: str) -> str:
+    """Format one value for a systemd EnvironmentFile assignment."""
+    if "\n" in value or "\r" in value:
+        raise ValueError("systemd环境变量值不能包含换行符")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _render_redis_config(redis_config: str, config_items: list[tuple[str, str]]) -> str:
+    """Replace every example or active occurrence of each Redis directive."""
+    for key, value in config_items:
+        pattern = re.compile(
+            r"(?m)^[ \t]*(?:#[ \t]*)?" + re.escape(key) + r"(?:[ \t]+.*)?$"
+        )
+        formatted_value = _format_redis_value(value, quote=key == "requirepass")
+        replacement = key + " " + formatted_value
+        matches = list(pattern.finditer(redis_config))
+        if not matches:
+            redis_config = redis_config.rstrip() + "\n" + replacement
+            continue
+
+        for match in reversed(matches[1:]):
+            redis_config = redis_config[:match.start()] + redis_config[match.end():]
+        match = pattern.search(redis_config)
+        assert match is not None
+        redis_config = redis_config[:match.start()] + replacement + redis_config[match.end():]
+    return redis_config.rstrip() + "\n"
+
+
 def install_redis(client, version=None):
     if not version:
         print_error("未获取到 Redis 版本号，无法继续安装")
@@ -93,17 +131,16 @@ def install_redis(client, version=None):
 
             config_items = [
                 ("bind", "0.0.0.0"),
-                ("protected-mode", "no"),
+                ("protected-mode", "yes"),
                 ("logfile", log_file),
                 ("dir", data_dir.rstrip("/")),
                 ("requirepass", redis_password),
             ]
-            for key, value in config_items:
-                pattern = r"(?m)^\s*#?\s*" + re.escape(key) + r"\s+.*$"
-                replacement = key + " " + value
-                redis_config, replace_count = re.subn(pattern, lambda _: replacement, redis_config, count=1)
-                if replace_count == 0:
-                    redis_config = redis_config.rstrip() + "\n" + replacement + "\n"
+            try:
+                redis_config = _render_redis_config(redis_config, config_items)
+            except ValueError as e:
+                print_error("redis.conf配置值无效: " + str(e))
+                return None
 
             tmpfile_path = None
             try:
@@ -124,6 +161,9 @@ def install_redis(client, version=None):
             _, config_chown_error, config_chown_status = run_command(client, "chown redis:redis " + shlex.quote(config_path))
             if config_chown_status != 0:
                 print_warning("redis.conf属主调整失败: " + (config_chown_error or config_path))
+            _, config_mode_error, config_mode_status = run_command(client, "chmod 600 " + shlex.quote(config_path))
+            if config_mode_status != 0:
+                print_warning("redis.conf权限调整失败: " + (config_mode_error or config_path))
             print_success("✓ redis.conf配置完成: " + config_path + "\n")
 
             current_version,_, _ = run_command(client, r'redis-cli -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
@@ -132,7 +172,54 @@ def install_redis(client, version=None):
             if confirm_yes_no("\n是否配置systemd守护进程？", default=False):
                 local_path = os.path.join("config", "redis", "redis.service")
                 remote_path = "/etc/systemd/system/redis.service"
-                upload_file_with_vars(client, local_path, remote_path, {'install_path': install_path, 'config_path': config_path})
+                password_env_path = config_dir + "/redis-password.env"
+                password_tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        "w", delete=False, encoding="utf-8", newline="\n"
+                    ) as password_tmp:
+                        password_tmp.write(
+                            "REDISCLI_AUTH="
+                            + _format_systemd_env_value(redis_password)
+                            + "\n"
+                        )
+                        password_tmp_path = password_tmp.name
+                    upload_file(client, password_tmp_path, password_env_path, force=True)
+                except (OSError, ValueError, RuntimeError) as e:
+                    print_error("Redis密码环境文件配置失败: " + str(e))
+                    return None
+                finally:
+                    if password_tmp_path:
+                        try:
+                            os.remove(password_tmp_path)
+                        except OSError:
+                            pass
+
+                _, password_chown_error, password_chown_status = run_command(
+                    client,
+                    "chown redis:redis " + shlex.quote(password_env_path),
+                )
+                if password_chown_status != 0:
+                    print_error("Redis密码环境文件属主调整失败: " + (password_chown_error or password_env_path))
+                    return None
+                _, password_mode_error, password_mode_status = run_command(
+                    client,
+                    "chmod 600 " + shlex.quote(password_env_path),
+                )
+                if password_mode_status != 0:
+                    print_error("Redis密码环境文件权限调整失败: " + (password_mode_error or password_env_path))
+                    return None
+
+                upload_file_with_vars(
+                    client,
+                    local_path,
+                    remote_path,
+                    {
+                        "install_path": install_path,
+                        "config_path": config_path,
+                        "password_env_path": password_env_path,
+                    },
+                )
                 
                 # 执行systemd相关命令
                 systemd_cmds = [

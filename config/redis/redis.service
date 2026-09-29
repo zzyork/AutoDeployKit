@@ -7,9 +7,10 @@ After=network-online.target
 Type=simple
 User=redis
 Group=redis
+EnvironmentFile=${password_env_path}
 ExecStart=${install_path}/bin/redis-server ${config_path}
 ExecReload=/bin/kill -s HUP $MAINPID
-ExecStop=${install_path}/bin/redis-cli -p 6379 -a ${redis_password} shutdown
+ExecStop=${install_path}/bin/redis-cli -p 6379 shutdown
 PrivateTmp=true
 
 [Install]
