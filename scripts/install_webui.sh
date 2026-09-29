@@ -82,32 +82,44 @@ python_ready() {
   "$python" -m venv --help >/dev/null 2>&1 && "$python" -m ssl >/dev/null 2>&1 && "$python" -m sqlite3 --help >/dev/null 2>&1
 }
 
-verify_python_archive() {
-  local archive="$1" expected="$2" actual
-  [[ "$archive" == /* && -f "$archive" && ! -L "$archive" ]] || die '需要本地官方源码 tar.gz 的绝对路径。'
-  [[ "${archive##*/}" =~ ^Python-(3\.14\.[0-9]+)\.tar\.gz$ ]] || die '仅接受 Python-3.14.x.tar.gz 官方源码包。'
-  local version="${BASH_REMATCH[1]}"
-  [[ "$expected" =~ ^[[:xdigit:]]{64}$ ]] || die 'SHA256 必须为 64 位十六进制值。'
-  actual="$(sha256sum -- "$archive")"
-  actual="${actual%% *}"
-  [[ "$actual" == "${expected,,}" ]] || die 'Python 源码包 SHA256 不匹配。'
-  printf '%s\n' "$version"
+python_archive_version() {
+  local archive="$1"
+  [[ "$archive" == /* && -f "$archive" && ! -L "$archive" ]] || die '需要本地官方源码包的绝对路径。'
+  [[ "${archive##*/}" =~ ^Python-(3\.14\.[0-9]+)\.(tgz|tar\.gz)$ ]] || die '仅接受 Python-3.14.x.tgz 或 Python-3.14.x.tar.gz 源码包。'
+  printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
 build_python() (
-  local archive expected version build_dir="" owned=0
-  for program in gcc make tar sha256sum; do
+  local archive version answer url="" build_dir="" owned=0
+  for program in gcc make tar; do
     command -v "$program" >/dev/null || die "缺少源码编译工具：$program"
   done
-  read -r -p '官方 Python 3.14 源码 tar.gz 的绝对路径：' archive
-  read -r -p '从 python.org 独立核对的 SHA256：' expected
-  version="$(verify_python_archive "$archive" "$expected")"
+  read -r -p '未检测到可用的 Python 3.14，是否从 python.org 自动下载最新 3.14.x 并编译？[y/N] ' answer
+  case "$answer" in
+    y|Y|yes|YES)
+      command -v curl >/dev/null || die '自动下载需要 curl；也可以选择手动提供源码包。'
+      version="$(curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 60 https://www.python.org/ftp/python/ \
+        | grep -oE 'href="3[.]14[.][0-9]+/"' | cut -d '"' -f 2 | tr -d / | sort -Vu | tail -n 1)" || die '无法从 python.org 查询 Python 3.14 发布目录。'
+      [[ "$version" =~ ^3\.14\.[0-9]+$ ]] || die '未查到 Python 3.14 稳定版。'
+      url="https://www.python.org/ftp/python/$version/Python-$version.tgz"
+      printf '将从 %s 下载并编译（不校验源码包哈希）。\n' "$url"
+      ;;
+    n|N|'')
+      read -r -p '本地官方 Python 3.14 源码包的绝对路径：' archive
+      version="$(python_archive_version "$archive")"
+      ;;
+    *) die '请输入 y 或 n。' ;;
+  esac
   if [[ -f "$PYTHON_DIR/.autodeploykit-building" ]]; then
     rm -rf -- "$PYTHON_DIR"
   fi
   [[ ! -e "$PYTHON_DIR" ]] || die "已有 Python 目录，拒绝覆盖：$PYTHON_DIR"
   trap 'if [[ "$owned" == 1 ]]; then rm -rf -- "$PYTHON_DIR"; fi; if [[ -n "$build_dir" ]]; then rm -rf -- "$build_dir"; fi' EXIT
   build_dir="$(mktemp -d "$INSTALL_DIR/.python-build.XXXXXX")"
+  if [[ -n "$url" ]]; then
+    archive="$build_dir/Python-$version.tgz"
+    curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 --output "$archive" "$url" || die 'Python 源码包下载失败；可重试或手动提供。'
+  fi
   owned=1
   mkdir -m 0755 "$PYTHON_DIR"
   touch "$PYTHON_DIR/.autodeploykit-building"

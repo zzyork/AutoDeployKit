@@ -1,24 +1,8 @@
 # AutoDeployKit
 
-一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装和巡检报告能力。
+一个面向多台 Linux 服务器的自动化运维与部署工具，提供 CLI 和 WebUI，支持服务器初始化、软件部署、监控安装和巡检报告。
 
-> CLI 适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版；WebUI 要求 systemd，Python 3.14 可复用现有安装或由交互脚本从官方源码包编译。
-
-WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md)；其中“必须预装 Python 3.14”的交付前提已由下面的交互安装流程取代，早期架构草案仅作历史参考。
-
----
-
-## 当前可用模块
-
-本项目当前通过 `cli.py` 可直接调用的模块如下：
-
-- `server_ops`：服务器初始化
-- `middleware_ops`：中间件管理
-- `software_ops`：软件管理
-- `monitor_ops`：监控管理
-- `server_check`：服务器巡检
-
----
+CLI 面向 CentOS 7/8/9、Rocky Linux、openEuler 等基于 RPM 的发行版；具体软件的支持范围以安装提示为准。WebUI 用于主机资产管理、只读巡检和历史报告查看。
 
 ## 功能概览
 
@@ -39,17 +23,9 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 - Nginx 管理
 - MySQL 管理
 - Redis 管理
-- RabbitMQ 安装（Erlang 官方 RPM + RabbitMQ 通用二进制包；默认 RabbitMQ `4.2.0` / Erlang `27.3.4.11`）
+- RabbitMQ 安装（RabbitMQ `4.2.0` / Erlang `27.3.4.11`，仅支持 `x86_64`）
 
-> 安装前通过 `utils/linux_distro.py` 检查系统、架构及已有安装。CentOS/RHEL 7/8/9、Rocky Linux、AlmaLinux、Oracle Linux 根据主版本选择 el7/el8/el9 RPM；openEuler 22.03 和 HCE 2.0 使用 el8 RPM，不升级 OpenSSL。当前已核验的安装包仅支持 `x86_64`。已有可用 Erlang 27.x 会复用，其他版本不会自动替换。
-
-> 通过 `dnf` / `yum` 安装 `socat`、`ncurses-compat-libs`、`wget`、`xz`；安装包保存到 `/usr/local/src`，RabbitMQ 安装到 `/usr/local/rabbitmq_server4.2`，环境变量写入 `/etc/profile.d/rabbitmq.sh`。不添加 RabbitMQ 软件源。优先上传 `packages/` 中的同名安装包，否则从 GitHub 下载；远程下载超过 5 分钟或失败时，改为本地下载并上传，两条路径均失败才中止。安装包均按官方发布资产的 SHA256 校验。团队软件库的包也可按原文件名放入 `packages/`，但必须与官方包一致。
-
-> 管理插件、systemd 服务、启动及开机自启、admin 管理员均需分别确认，默认跳过。systemd 按参考文档使用 root 运行；密码交互输入，要求至少 12 位并包含大小写字母、数字和特殊符号，只向服务器传输加盐 SHA256 哈希。不覆盖已有安装目录、PATH 文件或服务，不修改已有 admin，不关闭防火墙，不放开 guest 的远程访问。
-
-> RabbitMQ 4.2.0 不兼容 Erlang 25.3.2，因此未沿用文档中的 Erlang 版本。RabbitMQ 4.2 社区支持已于 2026-07-31 结束，CentOS 7 也已结束支持；本流程固定版本并提示风险，不自动切换为最新版本。参考：[通用二进制安装](https://www.rabbitmq.com/docs/install-generic-unix)、[Erlang 兼容矩阵](https://www.rabbitmq.com/docs/which-erlang)、[支持时间表](https://www.rabbitmq.com/release-information)、[Erlang 27.3.4.11 RPM](https://github.com/rabbitmq/erlang-rpm/releases/tag/v27.3.4.11)。
-
-> RabbitMQ 的升级、备份和回滚尚未接入 CLI。
+RabbitMQ 的升级、备份和回滚尚未接入 CLI。
 
 ### 3. 软件管理 `software_ops`
 
@@ -75,66 +51,14 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 - 汇总近期错误日志
 - 输出 Markdown 巡检报告
 
-## 项目结构
+### 6. WebUI
 
-```text
-.
-├─ cli.py                      # 主 CLI 入口
-├─ hosts.example               # 主机清单示例
-├─ pyproject.toml              # Python 项目与依赖配置
-├─ config/                     # 服务模板与配置文件
-│  ├─ docker/
-│  ├─ linux/
-│  ├─ minio/
-│  ├─ mysql/
-│  ├─ nginx/
-│  ├─ prometheus/
-│  └─ supervisor/
-├─ packages/                   # 本地缓存的软件包
-├─ server_ops/
-│  ├─ main.py
-│  ├─ hostname_ops.py
-│  ├─ pkg_ops.py
-│  ├─ firewall_ops.py
-│  ├─ kernel_optimize_ops.py
-│  ├─ disk_partition_ops.py
-│  ├─ system_optimize_ops.py
-│  └─ openssl_upgrade.py
-├─ middleware_ops/
-│  ├─ main.py
-│  ├─ nginx_manager.py
-│  ├─ mysql_manager.py
-│  ├─ redis_manager.py
-│  └─ rabbitmq_manager.py      # CLI 仅接入安装入口
-├─ software_ops/
-│  ├─ main.py
-│  ├─ docker_manager.py
-│  ├─ jdk_manager.py
-│  ├─ minio_manager.py
-│  └─ supervisor_manager.py
-├─ monitor_ops/
-│  ├─ main.py
-│  ├─ prometheus_monitor.py
-│  ├─ mysql_exporter.py
-│  ├─ node_exporter.py
-│  └─ redis_exporter.py
-├─ server_check/
-│  └─ main.py
-├─ scripts/
-│  └─ get-pip.py
-└─ utils/
-   ├─ ssh_utils.py
-   ├─ software_check.py
-   ├─ file_utils.py
-   ├─ output.py
-   ├─ menu_runner.py
-   ├─ choice.py
-   └─ server_utils.py
-```
+- 管理主机资产及 SSH 登录凭据
+- 执行只读服务器巡检
+- 查看历史巡检报告
+- 交互式安装、升级和卸载
 
----
-
-## 环境要求
+## CLI 安装
 
 - Python 3.9+
 - 可通过 SSH 访问目标主机
@@ -147,30 +71,7 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 pip install -e .
 ```
 
----
-
-## 使用 AI Agent 维护本仓库所需 Skills
-
-如果使用支持 Skills 的 AI Agent 辅助维护本仓库，建议至少启用以下 Skills：
-
-### 必需 Skills
-
-- `Code`：用于代码修改、计划拆解、实现与验证流程。
-- `brainstorming`：用于新增功能、调整行为或设计方案前的需求澄清与方案评估。
-- `git-essentials`：用于查看变更、提交记录、分支状态以及执行规范化 Git 工作流。
-
-### 按需启用 Skills
-
-- `security-auditor`：涉及 SSH、权限、密钥、命令执行、输入校验或高风险运维操作时启用。
-- `architecture-designer`：涉及模块边界、流程重构、插件化或批量运维架构调整时启用。
-- `writing-plans` / `executing-plans`：有明确规格或需要分阶段实施较大改动时启用。
-- `frontend-design` 或 `ui-ux-pro-max`：如果后续新增 Web UI、可视化报告或交互界面时启用。
-
-Agent 使用本仓库时还应遵守 `CLAUDE.md` 中的项目规则：先读取项目指令；只有在调用本仓库模块或流程时才加载 `.venv`；所有远程 SSH 操作必须先从 `hosts` 读取目标主机配置，并按查看、修改/重启、移动/删除/停止/关闭三类命令规则执行。
-
----
-
-## 主机清单
+## CLI 主机清单
 
 程序默认从当前目录读取 `hosts` 文件，格式可参考 `hosts.example`。
 
@@ -199,34 +100,7 @@ Agent 使用本仓库时还应遵守 `CLAUDE.md` 中的项目规则：先读取�
 - `proxy_keyfile`
 - `proxy_port`
 
----
-
-## 使用方式
-
-### WebUI 第一版
-
-WebUI 只使用自身数据库中的资产，**不读取或导入** CLI 的 `hosts`。管理员在页面登记主机、登录账号及密钥或密码；生成的 SSH 公钥需自行配置到服务器。首版只开放只读巡检和历史报告，不提供任意命令或服务修改。CLI 的主机来源和报告目录选择保持不变。
-
-Linux 交付包由构建环境生成的 wheel 与 `scripts/install_webui.sh` 组成，目标机不需要源码仓库。将 wheel 和脚本放到目标机，在本机交互终端运行：
-
-```bash
-sudo bash install_webui.sh
-```
-
-脚本菜单提供安装、升级、卸载；安装和升级会提示输入 wheel 的绝对路径（也可作为脚本第一个参数传入），通过独立虚拟环境只从 wheel 安装应用与依赖，不需要手动运行 `pip install`。首次安装会交互设置管理员口令。没有可用 Python 3.14 时，先从 python.org 获取对应的 `Python-3.14.x.tar.gz` 及**独立核对**的 SHA256，脚本会提示输入本地源码包路径和校验值，在 `/opt/autodeploykit/python-3.14` 隔离编译，不使用 RPM 安装 Python，也不替换系统 Python。目标机需运行 systemd 并具备 `ss`；编译时还需要 C 编译器、make、tar、sha256sum，以及可供 Python 编译使用的 OpenSSL、zlib、SQLite 开发库。缺少时先由管理员准备，脚本不会自动安装编译依赖或修改软件源。升级先在独立虚拟环境安装 wheel，验证后停服切换；新服务未就绪时尝试恢复旧版本。卸载需输入 `UNINSTALL` 确认，移除服务、虚拟环境及脚本编译的 Python，**保留**数据目录、根密钥和服务账号。
-
-默认程序放在 `/opt/autodeploykit`，数据和报告放在 `/var/lib/autodeploykit`，加密根密钥放在 `/etc/autodeploykit/master.key`；可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR` 为互不重叠的规范绝对目录。服务只监听 `127.0.0.1:8765`，须由管理员另行配置同机反向代理的 HTTPS 与内网访问限制。数据库与根密钥必须分别备份；任一丢失时不要重建密钥覆盖旧数据库。客户机管理员有权限读取已安装的 Python 代码，文件权限只限制普通用户。
-
-本地开发时，使用 Python 3.14 的独立虚拟环境安装 `.[web]`；在**仓库外**准备数据目录和根密钥目录，以本机终端运行初始化入口后再启动服务：
-
-```bash
-autodeploykit-webui-init --data-dir /absolute/data/path --key-file /another/absolute/path/master.key
-WEBUI_DATA_DIR=/absolute/data/path WEBUI_KEY_FILE=/another/absolute/path/master.key python -m uvicorn webui.app:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
-```
-
-WebUI 报告只写入数据目录下的 `reports/`。目标与跳板机沿用现有 Paramiko 主机密钥自动接受行为，首次连接无法验证服务器身份；正式部署前需评估中间人风险并限制为受控网络。未经确认不要将服务暴露到公网。
-
-### 1. 通用 CLI
+## CLI 使用
 
 ```bash
 python cli.py <module_name> <host_pattern>
@@ -249,9 +123,7 @@ python cli.py monitor_ops dbservers
 python cli.py server_check webservers
 ```
 
----
-
-## 巡检报告说明
+### 巡检报告
 
 执行 `server_check` 时，程序会提示选择或输入报告目录，也可通过 `SERVER_CHECK_REPORT_DIR` 指定。
 
@@ -260,57 +132,70 @@ python cli.py server_check webservers
 
 并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
 
-## 软件启动检测工具
+## WebUI 安装与使用
 
-`utils.software_check.check_software_started` 接收已有 SSH 连接，仅执行查看类命令，不负责安装、启动或重启软件。调用方应沿用从 `hosts` 读取配置并通过 `utils.ssh_utils` 建立连接的流程。
+### 环境要求
 
-```python
-from utils.software_check import check_software_started
+- Linux、systemd、`ss`
+- Python 3.14，可复用已有安装或按脚本提示编译安装
+- 自动下载 Python 时需要 `curl` 和可信的系统 CA 证书
+- 编译 Python 时需要 C 编译器、make、tar，以及 OpenSSL、zlib、SQLite 开发库；请提前准备
 
-result = check_software_started(
-    client,
-    service_name="nginx",
-    process_name="nginx",
-    retries=3,
-    interval=2,
-)
-started = result["success"]
-details = result["checks"]
-warnings = result["warnings"]
+### 安装、升级与卸载
+
+将交付的 wheel 与 `scripts/install_webui.sh` 放到目标机，在交互终端运行：
+
+```bash
+sudo bash install_webui.sh
 ```
 
-- 至少指定 `service_name` 或 `process_name`；指定的运行状态检查必须全部通过。服务名省略 `.service` 时自动补齐；systemd 检查要求服务为 `loaded/active/running`，并通过 `ps` 验证 `MainPID` 仍存活；进程名为 `ps -C` 使用的可执行文件名，不是命令行片段，僵尸、已停止或暂停的进程不算运行。
-- 默认读取服务当前启动批次的 journal；无法取得 `InvocationID` 时读取最近 5 分钟日志。可用 `log_path="/var/log/example/app.log"` 改为读取指定文件末尾 `log_lines` 行（默认 100 行，可能包含历史启动记录）。
-- 日志默认只提供诊断；设置 `success_pattern=r"ready for connections"` 后，还必须在日志中匹配该正则（忽略大小写）。错误关键字记录在 `checks["logs"]["error_matches"]` 和 `warnings` 中，不直接判定启动失败；读取日志失败且指定了成功关键字时，检测不通过。
-- 返回整体 `success`、实际 `attempts`、各项 `checks` 和 `warnings`；检查项保留命令、标准输出、错误输出、退出码和通过状态。`retries` 为总尝试次数，`interval` 为尝试间隔，不是 SSH 超时；该工具验证运行状态，不代表业务接口已经就绪。
+1. 在菜单中选择安装、升级或卸载。
+2. 安装或升级时输入 wheel 的绝对路径，也可通过脚本第一个参数传入。
+3. 没有可用 Python 3.14 时，选择 `y` 从 python.org 下载并编译最新稳定版 `3.14.x`；选择 `n` 则提供本地 `.tgz` 或 `.tar.gz` 源码包。
+4. 首次安装时设置管理员口令，无需手动执行 `pip install`。
 
-## Linux 发行版识别工具
+Python 安装在 `/opt/autodeploykit/python-3.14`，不替换系统 Python。升级期间服务会短暂中断。卸载需输入 `UNINSTALL` 确认，保留数据目录、根密钥和服务账号。
 
-`utils.linux_distro.get_linux_distribution(client)` 接收已有 SSH 连接，只读读取目标机的 `/etc/os-release`。返回 `id`、`version_id`、`pretty_name`、`id_like`（元组）和 `el_series`（RPM 包系列字符串或 `None`）；保留原发行版身份，不把衍生版改写为 CentOS。
+默认位置：
 
-```python
-from utils.linux_distro import get_linux_distribution
+| 内容 | 路径 |
+| --- | --- |
+| 程序 | `/opt/autodeploykit` |
+| 数据 | `/var/lib/autodeploykit` |
+| 巡检报告 | `/var/lib/autodeploykit/reports` |
+| 加密根密钥 | `/etc/autodeploykit/master.key` |
+| 服务地址 | `127.0.0.1:8765` |
 
-distro = get_linux_distribution(client)
-if distro["el_series"] == "8":
-    # 根据具体软件的兼容性要求再决定是否使用 el8 包。
-    pass
+可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR`，使用互不重叠的规范绝对目录。
+
+通过同机反向代理配置 HTTPS 和内网访问限制后，登录 WebUI，登记主机及 SSH 登录凭据，再执行巡检或查看历史报告。WebUI 不读取或导入 CLI 的 `hosts`；使用页面生成的 SSH 公钥时，需自行将公钥配置到目标服务器。当前不提供任意命令执行或服务修改。
+
+### 本地启动
+
+在 Python 3.14 的独立虚拟环境中安装 WebUI 依赖：
+
+```bash
+pip install -e ".[web]"
 ```
 
-当前仅映射 CentOS/RHEL/Rocky/AlmaLinux/Oracle Linux 的 7/8/9、openEuler 22.03 和 HCE 2.0（后两者对应 `el8`）；未知版本返回 `None`，不根据 `ID_LIKE` 猜测包兼容性。读取失败或缺失有效 `ID` 时抛出异常。此工具不建立 SSH 连接，也不改变现有安装流程。
+在仓库外准备数据目录和根密钥目录，然后在本机终端初始化并启动：
 
----
+```bash
+autodeploykit-webui-init --data-dir /absolute/data/path --key-file /another/absolute/path/master.key
+WEBUI_DATA_DIR=/absolute/data/path WEBUI_KEY_FILE=/another/absolute/path/master.key python -m uvicorn webui.app:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
+```
+
+浏览器访问 `http://127.0.0.1:8765`。
 
 ## 注意事项
 
-- CLI 共用安装包下载流程（含 RabbitMQ）限制每个包的远程下载总等待时间为 300 秒，涵盖连接、重定向和重试；超时或失败后由运行 CLI 的本机下载到 `packages/` 并上传，已有缓存会复用。本地新下载仅在完整成功后写入缓存路径。JDK 原本直接本地下载，不受此远程时限影响。
-- 远程下载依赖 `nohup`，写入 `/tmp/<包名>.download.<唯一标识>`，日志写入同路径的 `.log`，确认成功后才复制到最终安装包路径。超时仅结束 SSH 等待，不发送终止信号；原 `wget` 可能继续下载，但不会覆盖回退上传的最终文件。临时文件和日志不自动删除，需由管理员按磁盘使用情况管理。
-- 涉及磁盘分区、格式化、挂载的操作具有破坏性，请务必确认目标磁盘
-- 若目标机器无法直接联网，可先将安装包放入 `packages/` 目录供上传使用
-- 多主机执行时，连接失败的主机会跳过，不影响其他主机继续执行
-- 跳板机场景请正确填写 `proxy*` 参数
-
----
+- 涉及磁盘分区、格式化、挂载的操作具有破坏性，请务必确认目标磁盘。
+- 若目标机器无法直接联网，可先将安装包放入 `packages/` 目录供上传使用；RabbitMQ 安装包须使用官方原文件名及内容。
+- 跳板机场景请正确填写 `proxy*` 参数。
+- RabbitMQ 4.2 和 CentOS 7 已结束社区支持，使用前请评估安全与维护风险。
+- WebUI 数据库与根密钥必须分别备份；任一丢失时，不要创建新密钥覆盖旧密钥。
+- WebUI 安装脚本不校验 Python 源码包的 SHA256 或发布签名，请确保下载渠道和本地源码包可信。
+- SSH 首次连接不会验证主机身份，存在中间人风险；请限制在受控网络使用，不要直接将 WebUI 暴露到公网。
 
 ## 许可证
 
