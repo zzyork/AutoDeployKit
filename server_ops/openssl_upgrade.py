@@ -50,8 +50,7 @@ def upgrade_openssl_1_1_1(client):
     remote_path = "/usr/local/src/openssl-1.1.1w.tar.gz"
     url = "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz"
 
-    wget_cmd = f"cd /usr/local/src && wget {url}"
-    if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "！！！本地上传也失败，中止升级"):
+    if not remote_download_or_upload(client, url, local_path, remote_path, failure_message="！！！本地上传也失败，中止升级"):
         return None
     cmds = [
         "tar zxf /usr/local/src/openssl-1.1.1w.tar.gz -C /usr/local/src/",

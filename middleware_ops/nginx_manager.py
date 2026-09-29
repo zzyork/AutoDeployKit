@@ -155,8 +155,7 @@ def install_nginx(client, version=None):
         url = "https://nginx.org/download/nginx-" + version + ".tar.gz"
         remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
         cmds = [
             "tar zxf " + remote_path + " -C /usr/local/src/",
@@ -243,8 +242,7 @@ def upgrade_nginx(client, version=None):
     remote_path = "/usr/local/src/nginx-" + version + ".tar.gz"
     install_path = "/usr/local/nginx" + '.'.join(version.split('.')[:2])
 
-    wget_cmd = f"wget -O {shlex.quote(str(remote_path))} {shlex.quote(str(url))}"
-    if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "本地上传也失败，中止升级"):
+    if not remote_download_or_upload(client, url, local_path, remote_path, failure_message="本地上传也失败，中止升级"):
         return None
     
     configure_args = _get_nginx_configure_args(client, current_binary, install_path)

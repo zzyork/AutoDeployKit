@@ -46,8 +46,7 @@ def install_mysql(client, version=None):
         url = "https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz"
         remote_path = "/usr/local/src/mysql-" + version + "-linux-glibc2.28-x86_64.tar.xz"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
                 
         cmds = [

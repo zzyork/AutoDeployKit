@@ -14,8 +14,7 @@ def install_docker(client):
         local_path = os.path.join("packages", "docker-" + stable_version + ".tgz")
         remote_path = "/usr/local/src/docker-" + stable_version + ".tgz"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
                 
         cmds = [
@@ -88,8 +87,7 @@ def install_docker_compose(client):
         local_path = os.path.join("packages", "docker-compose-linux-x86_64")
         remote_path = "/usr/local/src/docker-compose-linux-x86_64"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
                 
         cmds = [

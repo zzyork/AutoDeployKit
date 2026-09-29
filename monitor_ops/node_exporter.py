@@ -79,8 +79,7 @@ def install_node_exporter(client):
 
         cmds = []
         if not install_dir_exists:
-            wget_cmd = f"wget -O {remote_path} --tries=3 --timeout=30 {url}"
-            if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "本地上传失败，中止安装"):
+            if not remote_download_or_upload(client, url, local_path, remote_path, failure_message="本地上传失败，中止安装", wget_args=("--tries=3",)):
                 return None
                     
             cmds = [

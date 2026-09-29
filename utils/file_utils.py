@@ -11,6 +11,7 @@ import difflib
 from datetime import datetime, timezone
 
 import requests
+from paramiko import SSHException
 from utils.output import print_error, print_info, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 
@@ -43,6 +44,7 @@ def download_file(url, dest):
     }
 
     r = None
+    partial_path = None
     try:
         print_info(f"开始下载: {url}")
         r = requests.get(url, headers=headers, stream=True, timeout=30)
@@ -59,7 +61,8 @@ def download_file(url, dest):
         start_ts = time.time()
         filename = os.path.basename(dest) or dest
 
-        with open(dest, "wb") as f:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=dest_dir or ".", delete=False) as f:
+            partial_path = f.name
             for chunk in r.iter_content(chunk_size=8192):
                 if not chunk:
                     continue
@@ -84,6 +87,11 @@ def download_file(url, dest):
                         )
                     sys.stdout.flush()
                     last_print_ts = now_ts
+
+        if total_size is not None and not r.headers.get("Content-Encoding") and downloaded != total_size:
+            raise RuntimeError(f"下载不完整: 预期 {total_size} 字节，实际 {downloaded} 字节")
+        os.replace(partial_path, dest)
+        partial_path = None
 
         end_ts = time.time()
         elapsed = max(end_ts - start_ts, 1e-6)
@@ -110,13 +118,18 @@ def download_file(url, dest):
     except Exception as e:
         raise RuntimeError(f"未知错误: {e}")
     finally:
+        if partial_path is not None:
+            try:
+                os.remove(partial_path)
+            except OSError as exc:
+                print_warning(f"无法清理本地下载临时文件 {partial_path}: {exc}")
         try:
             if r is not None:
                 r.close()
         except Exception:
             pass
 
-def upload_file(client, local_path, remote_path):
+def upload_file(client, local_path, remote_path, *, force=False):
     """上传文件到远程服务器，显示传输进度"""
     if not os.path.exists(local_path):
         print_error(f"本地文件不存在: {local_path}")
@@ -128,25 +141,25 @@ def upload_file(client, local_path, remote_path):
     remote_tmp_path = _build_remote_tmp_path(remote_path)
     
     # 检查远程文件是否已存在
-    try:
-        sftp = client.open_sftp()
+    if not force:
         try:
-            remote_stat = sftp.stat(remote_path)
-            remote_size = remote_stat.st_size
+            sftp = client.open_sftp()
+            try:
+                remote_stat = sftp.stat(remote_path)
+                remote_size = remote_stat.st_size
 
-            if remote_size == file_size:
+                if remote_size == file_size:
+                    print_info(f"远程文件已存在且大小相同，跳过上传: {remote_path}")
+                    return
+
+            except FileNotFoundError:
+                # 远程文件不存在，需要上传
+                pass
+            finally:
                 sftp.close()
-                print_info(f"远程文件已存在且大小相同，跳过上传: {remote_path}")
-                return
-
-        except FileNotFoundError:
-            # 远程文件不存在，需要上传
-            pass
-        finally:
-            sftp.close()
-    except Exception as e:
-        print_error(f"检查远程文件失败: {e}")
-        # 继续上传流程
+        except Exception as e:
+            print_error(f"检查远程文件失败: {e}")
+            # 继续上传流程
 
     print_info(f"开始上传: {filename} ({file_size / 1024 / 1024:.2f} MB) -> {remote_path}")
     
@@ -200,49 +213,41 @@ def upload_file(client, local_path, remote_path):
         print_error(f"上传失败: {e}")
         raise RuntimeError(f"上传失败: {e}")
 
-def remote_url_times_out(client, url, timeout_seconds=10):
-    """检查远程服务器访问下载 URL 是否超时。"""
-    probe_cmd = (
-        "wget --spider --tries=1 "
-        f"--timeout={timeout_seconds} "
-        f"--dns-timeout={timeout_seconds} "
-        f"--connect-timeout={timeout_seconds} "
-        f"--read-timeout={timeout_seconds} "
-        f"{shlex.quote(str(url))}"
-    )
-    output, status = run_command_live(client, probe_cmd)
-    if status == 0:
-        return False
-
-    normalized_output = (output or "").lower()
-    timeout_markers = (
-        "timed out",
-        "connection timeout",
-        "connection timed out",
-        "read timed out",
-        "operation timed out",
-        "超时",
-    )
-    return any(marker in normalized_output for marker in timeout_markers)
-
-def remote_download_or_upload(client, url, local_path, remote_path, wget_cmd=None, failure_message="本地上传也失败，中止安装"):
-    """优先远程下载；若远程访问 URL 超时或下载失败，则本地下载后上传。"""
-    should_try_remote_download = True
-    if remote_url_times_out(client, url):
-        print_warning("服务器连接下载URL超时，跳过服务器端下载，直接本地上传")
-        should_try_remote_download = False
-
-    if should_try_remote_download:
-        if wget_cmd is None:
-            wget_cmd = f"wget -O {shlex.quote(str(remote_path))} {shlex.quote(str(url))}"
-        _, wget_status = run_command_live(client, wget_cmd)
+def remote_download_or_upload(client, url, local_path, remote_path, failure_message="本地上传也失败，中止安装", *, wget_args=()):
+    """远程下载最多等待 300 秒，超时或失败后本地下载并上传。"""
+    remote_tmp_path = _build_remote_tmp_path(remote_path, purpose="download")
+    log_path = remote_tmp_path + ".log"
+    wget = shlex.join([
+        "nohup", "wget", "--tries=1", "--timeout=30", *wget_args,
+        "-O", remote_tmp_path, "--", str(url),
+    ])
+    # ponytail: 不终止远程进程；输出和日志隔离，最终路径只在成功返回后由客户端复制。
+    command = f"{wget} < /dev/null > {shlex.quote(log_path)} 2>&1"
+    print_info("远程下载总等待上限为 300 秒（5 分钟），超时后本地下载并上传")
+    print_info(f"远程下载日志: {log_path}")
+    started = time.monotonic()
+    try:
+        _, wget_status = run_command_live(client, command, timeout_seconds=300, use_pty=False)
         if wget_status == 0:
-            return True
-        print_warning("下载失败，尝试本地上传")
+            output, error, status = run_command(
+                client, f"cp -f -- {shlex.quote(remote_tmp_path)} {shlex.quote(str(remote_path))}"
+            )
+            if status == 0:
+                print_success(f"远程下载完成，耗时 {time.monotonic() - started:.1f} 秒")
+                return True
+            print_warning(f"远程下载文件复制失败: {error or output}")
+        else:
+            print_warning(f"远程下载失败（退出码 {wget_status}），尝试本地下载并上传")
+    except TimeoutError:
+        print_warning("远程下载等待已达 300 秒（5 分钟），切换为本地下载并上传")
+        print_warning(f"未终止远程 wget，它只能继续写入临时文件: {remote_tmp_path}")
+    except (OSError, SSHException, RuntimeError) as exc:
+        print_warning(f"远程下载异常，尝试本地下载并上传: {exc}")
 
     try:
-        download_file(url, local_path)
-        upload_file(client, local_path, remote_path)
+        if not download_file(url, local_path):
+            raise RuntimeError("本地下载失败")
+        upload_file(client, local_path, remote_path, force=True)
         print_success("本地上传成功")
         return True
     except RuntimeError as e:
@@ -280,9 +285,9 @@ def upload_file_with_vars(client, local_path, remote_path, variables: dict):
             pass
 
 
-def _build_remote_tmp_path(remote_path):
+def _build_remote_tmp_path(remote_path, purpose="upload"):
     remote_name = os.path.basename(remote_path) or "upload.tmp"
-    return f"/tmp/{remote_name}.upload.{os.getpid()}.{uuid.uuid4().hex}"
+    return f"/tmp/{remote_name}.{purpose}.{os.getpid()}.{uuid.uuid4().hex}"
 
 def compare_file_content(client, filepath, remote_path):
     """比较本地文件和远程文件的内容差异，返回远程文件相对于本地文件多出来或缺少的内容"""

@@ -43,7 +43,7 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 
 > 安装前通过 `utils/linux_distro.py` 检查系统、架构及已有安装。CentOS/RHEL 7/8/9、Rocky Linux、AlmaLinux、Oracle Linux 根据主版本选择 el7/el8/el9 RPM；openEuler 22.03 和 HCE 2.0 使用 el8 RPM，不升级 OpenSSL。当前已核验的安装包仅支持 `x86_64`。已有可用 Erlang 27.x 会复用，其他版本不会自动替换。
 
-> 通过 `dnf` / `yum` 安装 `socat`、`ncurses-compat-libs`、`wget`、`xz`；安装包保存到 `/usr/local/src`，RabbitMQ 安装到 `/usr/local/rabbitmq_server4.2`，环境变量写入 `/etc/profile.d/rabbitmq.sh`。不添加 RabbitMQ 软件源。优先上传 `packages/` 中的同名安装包，否则从 GitHub 下载；下载失败即中止，安装包均按官方发布资产的 SHA256 校验。团队软件库的包也可按原文件名放入 `packages/`，但必须与官方包一致。
+> 通过 `dnf` / `yum` 安装 `socat`、`ncurses-compat-libs`、`wget`、`xz`；安装包保存到 `/usr/local/src`，RabbitMQ 安装到 `/usr/local/rabbitmq_server4.2`，环境变量写入 `/etc/profile.d/rabbitmq.sh`。不添加 RabbitMQ 软件源。优先上传 `packages/` 中的同名安装包，否则从 GitHub 下载；远程下载超过 5 分钟或失败时，改为本地下载并上传，两条路径均失败才中止。安装包均按官方发布资产的 SHA256 校验。团队软件库的包也可按原文件名放入 `packages/`，但必须与官方包一致。
 
 > 管理插件、systemd 服务、启动及开机自启、admin 管理员均需分别确认，默认跳过。systemd 按参考文档使用 root 运行；密码交互输入，要求至少 12 位并包含大小写字母、数字和特殊符号，只向服务器传输加盐 SHA256 哈希。不覆盖已有安装目录、PATH 文件或服务，不修改已有 admin，不关闭防火墙，不放开 guest 的远程访问。
 
@@ -303,6 +303,8 @@ if distro["el_series"] == "8":
 
 ## 注意事项
 
+- CLI 共用安装包下载流程（含 RabbitMQ）限制每个包的远程下载总等待时间为 300 秒，涵盖连接、重定向和重试；超时或失败后由运行 CLI 的本机下载到 `packages/` 并上传，已有缓存会复用。本地新下载仅在完整成功后写入缓存路径。JDK 原本直接本地下载，不受此远程时限影响。
+- 远程下载依赖 `nohup`，写入 `/tmp/<包名>.download.<唯一标识>`，日志写入同路径的 `.log`，确认成功后才复制到最终安装包路径。超时仅结束 SSH 等待，不发送终止信号；原 `wget` 可能继续下载，但不会覆盖回退上传的最终文件。临时文件和日志不自动删除，需由管理员按磁盘使用情况管理。
 - 涉及磁盘分区、格式化、挂载的操作具有破坏性，请务必确认目标磁盘
 - 若目标机器无法直接联网，可先将安装包放入 `packages/` 目录供上传使用
 - 多主机执行时，连接失败的主机会跳过，不影响其他主机继续执行

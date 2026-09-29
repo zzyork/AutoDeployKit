@@ -39,8 +39,7 @@ def install_minio(client):
         local_path = os.path.join("packages", "minio.RELEASE.2025-04-22T22-12-26Z")
         remote_path = "/usr/local/src/minio.RELEASE.2025-04-22T22-12-26Z"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
 
         cmds = [

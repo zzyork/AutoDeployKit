@@ -172,7 +172,7 @@ def configure_ini(client, replace=False):
         print_error("工作目录必须是有效的绝对路径")
 
     while True:
-        program_user = input("请输入运行用户（默认：nginx）：").strip() or "nginx"
+        program_user = input("请输入运行用户（默认：root）：").strip() or "root"
         if re.fullmatch(r"[a-z_][a-z0-9_-]*\$?", program_user):
             break
         print_error("请输入有效的 Linux 用户名")

@@ -45,8 +45,7 @@ def install_redis_exporter(client):
 
         cmds = []
         if not install_dir_exists:
-            wget_cmd = f"cd /usr/local/src && wget {url}"
-            if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "本地上传失败，中止安装"):
+            if not remote_download_or_upload(client, url, local_path, remote_path, failure_message="本地上传失败，中止安装"):
                 return None
                     
             cmds = [

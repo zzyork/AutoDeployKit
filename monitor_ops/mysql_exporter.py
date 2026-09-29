@@ -45,8 +45,7 @@ def install_mysqld_exporter(client):
 
         cmds = []
         if not install_dir_exists:
-            wget_cmd = f"cd /usr/local/src && wget {url}"
-            if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd, "远程下载或本地下载均失败，请检查网络连接后重试"):
+            if not remote_download_or_upload(client, url, local_path, remote_path, failure_message="远程下载或本地下载均失败，请检查网络连接后重试"):
                 return None
                     
             cmds = [

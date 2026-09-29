@@ -59,8 +59,7 @@ def install_redis(client, version=None):
         url = "http://download.redis.io/releases/redis-" + version + ".tar.gz"
         remote_path = "/usr/local/src/redis-" + version + ".tar.gz"
 
-        wget_cmd = f"cd /usr/local/src && wget {url}"
-        if not remote_download_or_upload(client, url, local_path, remote_path, wget_cmd):
+        if not remote_download_or_upload(client, url, local_path, remote_path):
             return None
 
         source_dir = "/usr/local/src/redis-" + version

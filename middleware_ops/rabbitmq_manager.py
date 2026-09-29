@@ -12,7 +12,7 @@ from getpass import getpass
 from colorama import Fore
 
 from utils.choice import confirm_yes_no, menu_choice
-from utils.file_utils import get_eol_date, get_stable_version, upload_file
+from utils.file_utils import get_eol_date, get_stable_version, remote_download_or_upload, upload_file
 from utils.linux_distro import get_linux_distribution
 from utils.output import print_error, print_info, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
@@ -123,9 +123,7 @@ def install_rabbitmq(client, version=None):
                 print_error(str(exc))
                 return
         else:
-            output, status = run_command_live(client, "wget --tries=1 --timeout=30 -O " + remote_path + " " + url)
-            if status != 0:
-                print_error("下载失败：" + filename + " " + output)
+            if not remote_download_or_upload(client, url, local_path, remote_path):
                 return
         digest, error, status = run_command(client, "sha256sum " + remote_path)
         if status != 0 or not digest.split() or digest.split()[0] != checksum:

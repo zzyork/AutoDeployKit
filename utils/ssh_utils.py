@@ -212,32 +212,43 @@ def _run_web_command(client, command, strip_output):
         channel.close()
 
 
-def run_command_live(client, command):
-    """执行远程命令并实时显示输出，加载环境变量"""
+def run_command_live(client, command, timeout_seconds=None, *, use_pty=True):
+    """执行远程命令；可限制本地等待总时长，超时不发送终止信号。"""
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("命令超时必须大于 0")
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
     full_command = _build_remote_command(client, command)
     print(f"\n>> 正在远程执行: {command}\n")
 
     transport = client.get_transport()
-    channel = transport.open_session()
-    channel.get_pty()  # 获取伪终端，保证输出格式正常
-    channel.exec_command(full_command)
+    if transport is None:
+        raise RuntimeError("SSH transport 不可用")
+    channel = transport.open_session(timeout=timeout_seconds) if deadline is not None else transport.open_session()
+    try:
+        if deadline is not None:
+            channel.settimeout(max(0.001, deadline - time.monotonic()))
+        channel.set_combine_stderr(True)
+        if use_pty:
+            channel.get_pty()
+        if deadline is not None:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"远程命令等待超过 {timeout_seconds} 秒")
+            channel.settimeout(max(0.001, deadline - time.monotonic()))
+        channel.exec_command(full_command)
 
-    output = ""
-    while True:
-        if channel.recv_ready():
-            data = channel.recv(4096).decode("utf-8", errors="ignore")
-            output += data
-            print(data, end="")  # 实时打印
-        if channel.exit_status_ready():
+        output = ""
+        while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(f"远程命令等待超过 {timeout_seconds} 秒")
             if channel.recv_ready():
                 data = channel.recv(4096).decode("utf-8", errors="ignore")
                 output += data
                 print(data, end="")
-            break
-        time.sleep(0.1)
-
-    exit_status = channel.recv_exit_status()
-    return output, exit_status
+            if channel.exit_status_ready() and not channel.recv_ready():
+                return output, channel.recv_exit_status()
+            time.sleep(0.1)
+    finally:
+        channel.close()
 
 
 def _build_remote_command(client, command):
