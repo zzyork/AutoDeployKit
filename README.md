@@ -2,9 +2,9 @@
 
 一个面向多台 Linux 服务器的自动化运维与部署工具，基于 SSH 批量连接目标主机，提供服务器初始化、软件部署、监控安装和巡检报告能力。
 
-> CLI 适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版；WebUI 第一版要求客户机预装 Python 3.14 和 systemd。
+> CLI 适用于 CentOS 7/8/9、Rocky Linux、OpenEuler 等基于 RPM 的发行版；WebUI 要求 systemd，Python 3.14 可复用现有安装或由交互脚本从官方源码包编译。
 
-WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md)；早期架构草案仅作历史参考。
+WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-webui-v1-implementation.md)；其中“必须预装 Python 3.14”的交付前提已由下面的交互安装流程取代，早期架构草案仅作历史参考。
 
 ---
 
@@ -207,13 +207,15 @@ Agent 使用本仓库时还应遵守 `CLAUDE.md` 中的项目规则：先读取�
 
 WebUI 只使用自身数据库中的资产，**不读取或导入** CLI 的 `hosts`。管理员在页面登记主机、登录账号及密钥或密码；生成的 SSH 公钥需自行配置到服务器。首版只开放只读巡检和历史报告，不提供任意命令或服务修改。CLI 的主机来源和报告目录选择保持不变。
 
-Linux 交付包由构建环境生成的 wheel 与 `scripts/install_webui.sh` 组成，目标机不需要源码仓库。管理员在目标机本机终端执行（脚本会创建专用服务账号、安装目录与独立虚拟环境，交互设置管理员口令后启动服务）：
+Linux 交付包由构建环境生成的 wheel 与 `scripts/install_webui.sh` 组成，目标机不需要源码仓库。将 wheel 和脚本放到目标机，在本机交互终端运行：
 
 ```bash
-sudo bash install_webui.sh /absolute/path/autodeploykit-0.1.0-py3-none-any.whl
+sudo bash install_webui.sh
 ```
 
-脚本默认将程序放在 `/opt/autodeploykit`，数据和报告放在 `/var/lib/autodeploykit`，加密根密钥放在 `/etc/autodeploykit/master.key`；可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR` 为互不重叠的绝对目录。服务只监听 `127.0.0.1:8765`，须由管理员另行配置同机反向代理的 HTTPS 与内网访问限制。数据库与根密钥必须分别备份；任一丢失时不要重建密钥覆盖旧数据库。客户机管理员有权限读取已安装的 Python 代码，文件权限只限制普通用户。
+脚本菜单提供安装、升级、卸载；安装和升级会提示输入 wheel 的绝对路径（也可作为脚本第一个参数传入），通过独立虚拟环境只从 wheel 安装应用与依赖，不需要手动运行 `pip install`。首次安装会交互设置管理员口令。没有可用 Python 3.14 时，先从 python.org 获取对应的 `Python-3.14.x.tar.gz` 及**独立核对**的 SHA256，脚本会提示输入本地源码包路径和校验值，在 `/opt/autodeploykit/python-3.14` 隔离编译，不使用 RPM 安装 Python，也不替换系统 Python。目标机需运行 systemd 并具备 `ss`；编译时还需要 C 编译器、make、tar、sha256sum，以及可供 Python 编译使用的 OpenSSL、zlib、SQLite 开发库。缺少时先由管理员准备，脚本不会自动安装编译依赖或修改软件源。升级先在独立虚拟环境安装 wheel，验证后停服切换；新服务未就绪时尝试恢复旧版本。卸载需输入 `UNINSTALL` 确认，移除服务、虚拟环境及脚本编译的 Python，**保留**数据目录、根密钥和服务账号。
+
+默认程序放在 `/opt/autodeploykit`，数据和报告放在 `/var/lib/autodeploykit`，加密根密钥放在 `/etc/autodeploykit/master.key`；可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR` 为互不重叠的规范绝对目录。服务只监听 `127.0.0.1:8765`，须由管理员另行配置同机反向代理的 HTTPS 与内网访问限制。数据库与根密钥必须分别备份；任一丢失时不要重建密钥覆盖旧数据库。客户机管理员有权限读取已安装的 Python 代码，文件权限只限制普通用户。
 
 本地开发时，使用 Python 3.14 的独立虚拟环境安装 `.[web]`；在**仓库外**准备数据目录和根密钥目录，以本机终端运行初始化入口后再启动服务：
 
