@@ -1,333 +1,94 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR="${WEBUI_INSTALL_DIR:-/opt/autodeploykit}"
-DATA_DIR="${WEBUI_DATA_DIR:-/var/lib/autodeploykit}"
-CONFIG_DIR="${WEBUI_CONFIG_DIR:-/etc/autodeploykit}"
-USER_NAME="autodeploykit"
-UNIT="/etc/systemd/system/autodeploykit-webui.service"
-ENV_FILE="$CONFIG_DIR/webui.env"
-KEY_FILE="$CONFIG_DIR/master.key"
-PYTHON_DIR="$INSTALL_DIR/python-3.14"
-VENV="$INSTALL_DIR/.venv"
-NEXT_VENV="$INSTALL_DIR/.venv-next"
-OLD_VENV="$INSTALL_DIR/.venv-old"
-
 die() { printf '%s\n' "$*" >&2; exit 2; }
 
-check_layout() {
-  local directory other
-  for directory in "$INSTALL_DIR" "$DATA_DIR" "$CONFIG_DIR"; do
-    [[ "$directory" =~ ^/[A-Za-z0-9_./-]+$ && "$directory" != / ]] || die "目录必须是安全的绝对路径：$directory"
-    [[ "$(realpath -m -- "$directory")" == "$directory" ]] || die "目录不能含符号链接或非规范路径：$directory"
-    for other in "$INSTALL_DIR" "$DATA_DIR" "$CONFIG_DIR"; do
-      if [[ "$directory" != "$other" && "$directory" == "$other"/* ]]; then
-        die '安装、数据和配置目录不能相互嵌套。'
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+COMPOSE="$ROOT/compose.webui.yaml"
+
+compose() { docker compose --project-directory "$ROOT" -f "$COMPOSE" "$@"; }
+
+ensure_docker() {
+  local missing_docker=0 missing_compose=0 answer missing endpoint
+  local -a privileged=() packages=()
+  if ! command -v docker >/dev/null || ! docker --version >/dev/null 2>&1; then
+    missing_docker=1
+  fi
+  if (( missing_docker )) || ! docker compose version >/dev/null 2>&1; then
+    missing_compose=1
+  fi
+  if (( missing_docker || missing_compose )); then
+    missing="$(if (( missing_docker )); then printf 'Docker Engine '; fi)$(if (( missing_compose )); then printf 'Docker Compose 插件'; fi)"
+    read -r -p "缺少 ${missing}。是否通过本机已配置的软件仓库安装，并在需要时启用 Docker 服务？[y/N] " answer || die '未确认安装，已退出。'
+    [[ "$answer" == y || "$answer" == Y ]] || die '已取消安装。'
+    if (( EUID != 0 )); then
+      command -v sudo >/dev/null || die '安装需要 root 权限或 sudo。'
+      privileged=(sudo)
+    fi
+    if command -v apt-get >/dev/null; then
+      "${privileged[@]}" apt-get update
+      if (( missing_docker )); then
+        if apt-cache show docker-ce containerd.io >/dev/null 2>&1; then
+          packages+=(docker-ce docker-ce-cli containerd.io)
+        else
+          packages+=(docker.io)
+        fi
       fi
-    done
-  done
-  [[ "$INSTALL_DIR" != "$DATA_DIR" && "$INSTALL_DIR" != "$CONFIG_DIR" && "$DATA_DIR" != "$CONFIG_DIR" ]] || die '安装、数据和配置目录必须分开。'
-  for directory in "$UNIT" "$ENV_FILE" "$KEY_FILE" "$VENV" "$NEXT_VENV" "$OLD_VENV" "$PYTHON_DIR" "$INSTALL_DIR/AGENTS.md" "$INSTALL_DIR/CLAUDE.md"; do
-    [[ ! -L "$directory" ]] || die "拒绝符号链接：$directory"
-  done
-}
-
-render_unit() {
-  cat <<EOF
-[Unit]
-Description=AutoDeployKit WebUI
-After=network-online.target
-
-[Service]
-Type=simple
-User=$USER_NAME
-Group=$USER_NAME
-WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$ENV_FILE
-ExecStart=$VENV/bin/python -m uvicorn webui.app:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
-Restart=on-failure
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=$DATA_DIR
-
-[Install]
-WantedBy=multi-user.target
-EOF
-}
-
-check_existing_install() {
-  [[ -f "$UNIT" && -f "$ENV_FILE" ]] || die '未找到完整的 WebUI 服务配置；请检查现有安装。'
-  if ! cmp -s "$UNIT" <(render_unit); then
-    diff -u "$UNIT" <(render_unit) >&2 || true
-    die '现有服务配置与脚本不一致，拒绝自动操作。'
-  fi
-  printf 'WEBUI_DATA_DIR=%s\nWEBUI_KEY_FILE=%s\n' "$DATA_DIR" "$KEY_FILE" | cmp -s - "$ENV_FILE" || die '现有环境配置与请求的目录不同。'
-  if command -v systemctl >/dev/null; then
-    [[ "$(systemctl show --property=FragmentPath --value autodeploykit-webui.service)" == "$UNIT" ]] || die 'systemd 加载的服务配置与当前文件不一致。'
-    [[ -z "$(systemctl show --property=DropInPaths --value autodeploykit-webui.service)" ]] || die '服务存在 drop-in 覆盖，请先人工检查。'
-  fi
-}
-
-ask_wheel() {
-  local wheel="${1:-}"
-  [[ -n "$wheel" ]] || read -r -p '本地 WebUI wheel 的绝对路径：' wheel
-  [[ "$wheel" == /* && "$wheel" == *.whl && -f "$wheel" && ! -L "$wheel" ]] || die '需要一个本地 wheel 文件的绝对路径。'
-  WHEEL="$wheel"
-}
-
-python_ready() {
-  local python="$1"
-  [[ -x "$python" || "${python##*/}" == "$python" && -n "$(command -v "$python" || true)" ]] || return 1
-  [[ "$("$python" --version 2>/dev/null)" == Python\ 3.14.* ]] || return 1
-  "$python" -m venv --help >/dev/null 2>&1 && "$python" -m ssl >/dev/null 2>&1 && "$python" -m sqlite3 --help >/dev/null 2>&1
-}
-
-python_archive_version() {
-  local archive="$1"
-  [[ "$archive" == /* && -f "$archive" && ! -L "$archive" ]] || die '需要本地官方源码包的绝对路径。'
-  [[ "${archive##*/}" =~ ^Python-(3\.14\.[0-9]+)\.(tgz|tar\.gz)$ ]] || die '仅接受 Python-3.14.x.tgz 或 Python-3.14.x.tar.gz 源码包。'
-  printf '%s\n' "${BASH_REMATCH[1]}"
-}
-
-build_python() (
-  local archive version answer url="" build_dir="" owned=0
-  for program in gcc make tar; do
-    command -v "$program" >/dev/null || die "缺少源码编译工具：$program"
-  done
-  read -r -p '未检测到可用的 Python 3.14，是否从 python.org 自动下载最新 3.14.x 并编译？[y/N] ' answer
-  case "$answer" in
-    y|Y|yes|YES)
-      command -v curl >/dev/null || die '自动下载需要 curl；也可以选择手动提供源码包。'
-      version="$(curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 60 https://www.python.org/ftp/python/ \
-        | grep -oE 'href="3[.]14[.][0-9]+/"' | cut -d '"' -f 2 | tr -d / | sort -Vu | tail -n 1)" || die '无法从 python.org 查询 Python 3.14 发布目录。'
-      [[ "$version" =~ ^3\.14\.[0-9]+$ ]] || die '未查到 Python 3.14 稳定版。'
-      url="https://www.python.org/ftp/python/$version/Python-$version.tgz"
-      printf '将从 %s 下载并编译（不校验源码包哈希）。\n' "$url"
-      ;;
-    n|N|'')
-      read -r -p '本地官方 Python 3.14 源码包的绝对路径：' archive
-      version="$(python_archive_version "$archive")"
-      ;;
-    *) die '请输入 y 或 n。' ;;
-  esac
-  if [[ -f "$PYTHON_DIR/.autodeploykit-building" ]]; then
-    rm -rf -- "$PYTHON_DIR"
-  fi
-  [[ ! -e "$PYTHON_DIR" ]] || die "已有 Python 目录，拒绝覆盖：$PYTHON_DIR"
-  trap 'if [[ "$owned" == 1 ]]; then rm -rf -- "$PYTHON_DIR"; fi; if [[ -n "$build_dir" ]]; then rm -rf -- "$build_dir"; fi' EXIT
-  build_dir="$(mktemp -d "$INSTALL_DIR/.python-build.XXXXXX")"
-  if [[ -n "$url" ]]; then
-    archive="$build_dir/Python-$version.tgz"
-    curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 --output "$archive" "$url" || die 'Python 源码包下载失败；可重试或手动提供。'
-  fi
-  owned=1
-  mkdir -m 0755 "$PYTHON_DIR"
-  touch "$PYTHON_DIR/.autodeploykit-building"
-  tar -xzf "$archive" -C "$build_dir" --no-same-owner
-  [[ -f "$build_dir/Python-$version/configure" ]] || die '源码包缺少 configure。'
-  cd "$build_dir/Python-$version"
-  ./configure --prefix="$PYTHON_DIR" --with-ensurepip=install
-  make -j2
-  make altinstall
-  "$PYTHON_DIR/bin/python3.14" -m pip --version >/dev/null
-  "$PYTHON_DIR/bin/python3.14" -m ssl >/dev/null
-  "$PYTHON_DIR/bin/python3.14" -m sqlite3 --help >/dev/null
-  touch "$PYTHON_DIR/.autodeploykit-built"
-  rm -f -- "$PYTHON_DIR/.autodeploykit-building"
-  owned=0
-  printf 'Python %s 已安装到 %s（未替换系统 Python）。\n' "$version" "$PYTHON_DIR"
-)
-
-ensure_venv() {
-  local python created=0
-  if [[ -e "$VENV" ]]; then
-    python_ready "$VENV/bin/python" || die '现有虚拟环境不是可用的 Python 3.14，拒绝覆盖。'
-  else
-    if python_ready "$PYTHON_DIR/bin/python3.14"; then
-      python="$PYTHON_DIR/bin/python3.14"
-    elif python_ready python3.14; then
-      python=python3.14
+      if (( missing_compose )); then
+        if apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+          packages+=(docker-compose-plugin)
+        elif apt-cache show docker-compose-v2 >/dev/null 2>&1; then
+          packages+=(docker-compose-v2)
+        else
+          die '当前 APT 仓库没有 Docker Compose v2 插件；请先配置可信软件仓库。'
+        fi
+      fi
+      "${privileged[@]}" apt-get --no-remove install -y "${packages[@]}"
+    elif command -v dnf >/dev/null; then
+      if (( missing_docker )); then
+        packages+=(docker-ce docker-ce-cli containerd.io)
+      fi
+      if (( missing_compose )); then
+        packages+=(docker-compose-plugin)
+      fi
+      "${privileged[@]}" dnf install -y "${packages[@]}" || die 'DNF 安装失败；请检查 Docker 官方仓库是否已配置。'
     else
-      printf '未检测到可用的 Python 3.14，将使用官方源码包编译。\n'
-      build_python
-      python="$PYTHON_DIR/bin/python3.14"
+      die '只支持从已配置的 APT 或 DNF 仓库安装；请自行安装 Docker Engine 和 Compose 插件。'
     fi
-    if ! "$python" -m venv "$VENV"; then
-      rm -rf -- "$VENV"
-      die '无法建立 Python 3.14 虚拟环境。'
+    if (( missing_docker )); then
+      command -v systemctl >/dev/null || die 'Docker 已安装，但没有 systemctl；请自行启动 Docker 服务。'
+      "${privileged[@]}" systemctl enable --now docker
     fi
-    created=1
   fi
-  if ! "$VENV/bin/python" -m pip --version >/dev/null; then
-    [[ "$created" == 0 ]] || rm -rf -- "$VENV"
-    die '虚拟环境中缺少 pip；检查 Python 的 ensurepip/venv 支持。'
-  fi
-}
-
-service_ready() {
-  local attempt status main_pid
-  sleep 2
-  for attempt in {1..30}; do
-    if systemctl is-active --quiet autodeploykit-webui.service; then
-      main_pid="$(systemctl show --property=MainPID --value autodeploykit-webui.service)" || main_pid=""
-      if [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] && (
-        exec 3<>/dev/tcp/127.0.0.1/8765
-        printf 'GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n' >&3
-        IFS= read -r -t 2 status <&3
-        [[ "$status" == *" 200 "* ]]
-      ) 2>/dev/null && ss -H -ltnp '( sport = :8765 )' | grep -Fq "pid=$main_pid,"; then
-        return 0
-      fi
-    fi
-    sleep 1
-  done
-  return 1
-}
-
-fix_entrypoints() {
-  local script first
-  for script in "$VENV/bin/"*; do
-    [[ -f "$script" && -x "$script" && ! -L "$script" ]] || continue
-    IFS= read -r first < "$script" || continue
-    if [[ "$first" == "#!$NEXT_VENV/bin/python"* ]]; then
-      sed -i "1s|^#!.*|#!$VENV/bin/python|" "$script" || return 1
-    elif [[ "$first" == '#!/bin/sh' ]] && grep -Fq "$NEXT_VENV/bin/python" "$script"; then
-      sed -i "s|$NEXT_VENV/bin/python|$VENV/bin/python|g" "$script" || return 1
-    fi
-  done
-}
-
-install_or_upgrade() {
-  local mode="$1" target_venv="$VENV"
-  check_layout
-  if [[ "$mode" == upgrade ]]; then
-    check_existing_install
-    [[ -f "$KEY_FILE" ]] || die '加密根密钥丢失，拒绝升级。'
-    [[ -f "$DATA_DIR/webui.sqlite3" ]] || die '数据库丢失，拒绝升级。'
-    [[ -x "$VENV/bin/python" ]] || die '虚拟环境缺失，拒绝升级。'
-    python_ready "$VENV/bin/python" || die '现有虚拟环境不可用，拒绝升级。'
-    [[ ! -e "$NEXT_VENV" && ! -e "$OLD_VENV" ]] || die '发现上次升级残留，请先检查虚拟环境。'
-  else
-    [[ ! -e "$UNIT" && ! -e "$ENV_FILE" ]] || die '检测到已有配置；请选择升级或先检查安装状态。'
-  fi
-  ask_wheel "${2:-}"
-  for program in systemctl runuser useradd ss sed; do
-    command -v "$program" >/dev/null || die "缺少命令：$program"
-  done
-  [[ -d /run/systemd/system ]] || die '目标系统未运行 systemd。'
-  if [[ "$mode" == install && ! -f "$DATA_DIR/webui.sqlite3" && ! -t 0 ]]; then
-    die '首次安装必须在本机终端设置管理员口令。'
-  fi
-  if [[ -f "$DATA_DIR/webui.sqlite3" && ! -f "$KEY_FILE" ]]; then
-    die '数据库存在但加密根密钥丢失，拒绝重新生成。'
-  fi
-  if ! id "$USER_NAME" >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
-  fi
-  install -d -m 0750 -o root -g "$USER_NAME" "$INSTALL_DIR" "$CONFIG_DIR"
-  install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$DATA_DIR" "$DATA_DIR/reports"
-  if [[ "$mode" == upgrade ]]; then
-    if ! "$VENV/bin/python" -m venv "$NEXT_VENV"; then
-      rm -rf -- "$NEXT_VENV"
-      die '准备新虚拟环境失败，旧服务未更改。'
-    fi
-    target_venv="$NEXT_VENV"
-  else
-    ensure_venv
-  fi
-  if ! "$target_venv/bin/python" -m pip install --no-input --only-binary=:all: --upgrade "${WHEEL}[web]"; then
-    [[ "$mode" != upgrade ]] || rm -rf -- "$NEXT_VENV"
-    die 'wheel 或依赖安装失败，服务未切换。'
-  fi
-  if ! "$target_venv/bin/python" -m webui.bootstrap --data-dir "$DATA_DIR" --key-file "$KEY_FILE" --create-key-only; then
-    [[ "$mode" != upgrade ]] || rm -rf -- "$NEXT_VENV"
-    die '数据库或加密根密钥校验失败，服务未切换。'
-  fi
-  if ! runuser -u "$USER_NAME" -- "$target_venv/bin/python" -m pip --version >/dev/null; then
-    [[ "$mode" != upgrade ]] || rm -rf -- "$NEXT_VENV"
-    die '服务账号无法运行新虚拟环境，服务未切换。'
-  fi
-  chown root:"$USER_NAME" "$KEY_FILE"
-  chmod 0640 "$KEY_FILE"
-  if [[ "$mode" == install ]]; then
-    runuser -u "$USER_NAME" -- "$target_venv/bin/python" -m webui.bootstrap --data-dir "$DATA_DIR" --key-file "$KEY_FILE"
-  fi
-  for name in AGENTS.md CLAUDE.md; do
-    [[ ! -L "$INSTALL_DIR/$name" ]] || die "拒绝符号链接：$INSTALL_DIR/$name"
-  done
-  "$target_venv/bin/python" -m webui.bootstrap --write-instructions "$INSTALL_DIR"
-  chown root:"$USER_NAME" "$INSTALL_DIR/AGENTS.md" "$INSTALL_DIR/CLAUDE.md"
-  chmod 0640 "$INSTALL_DIR/AGENTS.md" "$INSTALL_DIR/CLAUDE.md"
-
-  if [[ "$mode" == install ]]; then
-    printf 'WEBUI_DATA_DIR=%s\nWEBUI_KEY_FILE=%s\n' "$DATA_DIR" "$KEY_FILE" > "$ENV_FILE"
-    chown root:"$USER_NAME" "$ENV_FILE"
-    chmod 0640 "$ENV_FILE"
-    render_unit > "$UNIT"
-    chmod 0644 "$UNIT"
-    systemctl daemon-reload
-    systemctl enable --now autodeploykit-webui.service
-    service_ready || die '服务未就绪，请查看 systemctl status autodeploykit-webui.service。'
-  else
-    if ! systemctl stop autodeploykit-webui.service; then
-      rm -rf -- "$NEXT_VENV"
-      die '无法停用旧服务，未切换虚拟环境。'
-    fi
-    if ! mv -- "$VENV" "$OLD_VENV"; then
-      rm -rf -- "$NEXT_VENV"
-      systemctl start autodeploykit-webui.service || true
-      die '无法保存旧虚拟环境，已尝试恢复旧服务。'
-    fi
-    if ! mv -- "$NEXT_VENV" "$VENV"; then
-      mv -- "$OLD_VENV" "$VENV"
-      systemctl start autodeploykit-webui.service
-      die '无法切换虚拟环境，已尝试恢复旧服务。'
-    fi
-    if ! fix_entrypoints || ! systemctl start autodeploykit-webui.service || ! service_ready; then
-      systemctl stop autodeploykit-webui.service || die '新服务无法停止；旧虚拟环境仍保留，请人工检查。'
-      rm -rf -- "$VENV"
-      mv -- "$OLD_VENV" "$VENV"
-      systemctl start autodeploykit-webui.service || die '旧服务重启失败，请检查 systemd 日志。'
-      service_ready || die '旧服务未就绪，请检查 systemd 日志。'
-      die '新版本未就绪，已恢复旧版本。'
-    fi
-    rm -rf -- "$OLD_VENV"
-  fi
-  printf 'WebUI 已%s；服务仅监听 127.0.0.1:8765，请配置 HTTPS 反向代理。\n' "$(if [[ "$mode" == install ]]; then printf '安装'; else printf '升级'; fi)"
-}
-
-uninstall_webui() {
-  local answer
-  check_layout
-  check_existing_install
-  read -r -p '输入 UNINSTALL 确认卸载服务和程序（保留数据库、报告和根密钥）：' answer
-  [[ "$answer" == UNINSTALL ]] || { printf '已取消。\n'; return; }
-  systemctl disable --now autodeploykit-webui.service
-  rm -f -- "$UNIT" "$ENV_FILE"
-  systemctl daemon-reload
-  rm -rf -- "$VENV" "$NEXT_VENV" "$OLD_VENV"
-  if [[ -f "$PYTHON_DIR/.autodeploykit-built" ]]; then
-    rm -rf -- "$PYTHON_DIR"
-  fi
-  printf '服务和程序已卸载；%s、%s 和服务账号仍保留。\n' "$DATA_DIR" "$KEY_FILE"
+  command -v docker >/dev/null && docker compose version >/dev/null 2>&1 || die 'Docker Engine 或 Compose 插件仍不可用。'
+  endpoint="$(docker context inspect "$(docker context show)" --format '{{(index .Endpoints "docker").Host}}')" || die '无法检查 Docker context。'
+  [[ "$endpoint" == unix:///* && ( -z "${DOCKER_HOST:-}" || "$DOCKER_HOST" == unix:///* ) ]] || die '当前 Docker context 或 DOCKER_HOST 指向非本机 Unix socket，拒绝部署。'
+  docker info >/dev/null 2>&1 || die '无法访问 Docker 守护进程；请检查服务状态或当前用户权限。'
 }
 
 main() {
-  local choice
-  [[ "$(id -u)" -eq 0 ]] || die '请在目标 Linux 主机的本机终端以 root 执行。'
-  command -v realpath >/dev/null || die '缺少 realpath。'
-  [[ -t 0 ]] || die '请在本机交互终端运行。'
-  while true; do
-    printf '\nAutoDeployKit WebUI\n  1) 安装\n  2) 升级\n  3) 卸载（保留数据和密钥）\n  0) 退出\n'
-    read -r -p '请选择操作：' choice
-    case "$choice" in
-      1) install_or_upgrade install "${1:-}"; return ;;
-      2) install_or_upgrade upgrade "${1:-}"; return ;;
-      3) uninstall_webui; return ;;
-      0) return ;;
-      *) printf '无效选项。\n' ;;
-    esac
-  done
+  local mode="${1:-install}"
+  [[ $# -le 1 && ( "$mode" == install || "$mode" == upgrade ) ]] || die '用法：bash scripts/install_webui.sh [install|upgrade]'
+  [[ -f "$COMPOSE" && -f "$ROOT/Dockerfile.webui" && -f "$ROOT/pyproject.toml" ]] || die '请从包含完整源码和 Compose 配置的交付目录运行。'
+  [[ ! -e /etc/systemd/system/autodeploykit-webui.service ]] || die '检测到旧 systemd 安装；请人工备份和迁移，不要同时启动两个服务。'
+  [[ "$mode" != install || -t 0 ]] || die '首次安装必须在交互终端设置管理员口令。'
+  ensure_docker
+
+  compose build webui
+  if [[ "$mode" == upgrade ]]; then
+    compose --profile setup run --rm --no-deps --entrypoint /bin/sh init -c \
+      'test -f /var/lib/autodeploykit/webui.sqlite3 && test -s /etc/autodeploykit/master.key' \
+      || die '数据库或根密钥缺失，拒绝升级；请先检查和恢复备份。'
+  else
+    compose --profile setup run --rm --no-deps --entrypoint /bin/sh init -c \
+      'test ! -e /var/lib/autodeploykit/webui.sqlite3 && test ! -e /etc/autodeploykit/master.key' \
+      || die '发现已有数据或密钥，拒绝重复安装；升级请使用 upgrade。'
+  fi
+
+  compose --profile setup run --rm --no-deps init
+  compose up -d --no-deps webui
+  compose ps webui
+  printf 'WebUI 已通过容器%s；访问地址：http://127.0.0.1:8765（请配置 HTTPS 反向代理）。\n' "$([[ "$mode" == install ]] && printf '安装' || printf '升级')"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

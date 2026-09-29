@@ -1,0 +1,39 @@
+services:
+  webui:
+    image: autodeploykit-webui:local
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - webui_data:/var/lib/autodeploykit
+      - webui_key:/etc/autodeploykit:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  init:
+    image: autodeploykit-webui:local
+    profiles: [setup]
+    read_only: true
+    tmpfs:
+      - /tmp
+    entrypoint: ["autodeploykit-webui-init"]
+    command: []
+    volumes:
+      - webui_data:/var/lib/autodeploykit
+      - webui_key:/etc/autodeploykit
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  webui_data:
+  webui_key:

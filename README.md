@@ -56,7 +56,7 @@ RabbitMQ 的升级、备份和回滚尚未接入 CLI。
 - 管理主机资产及 SSH 登录凭据
 - 执行只读服务器巡检
 - 查看历史巡检报告
-- 交互式安装、升级和卸载
+- 容器安装与升级
 
 ## CLI 安装
 
@@ -134,41 +134,34 @@ python cli.py server_check webservers
 
 ## WebUI 安装与使用
 
-### 环境要求
+### 容器部署环境要求
 
-- Linux、systemd、`ss`
-- Python 3.14，可复用已有安装或按脚本提示编译安装
-- 自动下载 Python 时需要 `curl` 和可信的系统 CA 证书
-- 编译 Python 时需要 C 编译器、make、tar，以及 OpenSSL、zlib、SQLite 开发库；请提前准备
+- Linux 主机、Docker Engine 和 Docker Compose 插件（`docker compose`）；脚本检测到缺失时会询问是否从本机已配置的 APT/DNF 仓库安装并启动 Docker，拒绝则退出
+- 安装 Docker 需要 root 或 sudo；运行脚本的账号还需有权访问本机 Docker 守护进程（Unix socket）。不支持的软件仓库或缺包时请先手动配置可信来源
+- 构建镜像时能访问 Python 包索引；主机不需要安装 Python 或 systemd 服务
 
-### 安装、升级与卸载
+### 安装与升级
 
-将交付的 wheel 与 `scripts/install_webui.sh` 放到目标机，在交互终端运行：
+将完整仓库放到部署主机，在交互终端安装：
 
 ```bash
-sudo bash install_webui.sh
+bash scripts/install_webui.sh install
 ```
 
-1. 在菜单中选择安装、升级或卸载。
-2. 安装或升级时输入 wheel 的绝对路径，也可通过脚本第一个参数传入。
-3. 没有可用 Python 3.14 时，选择 `y` 从 python.org 下载并编译最新稳定版 `3.14.x`；选择 `n` 则提供本地 `.tgz` 或 `.tar.gz` 源码包。
-4. 首次安装时设置管理员口令，无需手动执行 `pip install`。
+首次安装时脚本通过初始化容器在终端设置管理员口令；已有数据请使用 `upgrade`，不会重置口令。升级时先备份两个卷、获取新代码，保持原部署目录或 `COMPOSE_PROJECT_NAME` 不变，再运行 `bash scripts/install_webui.sh upgrade`。脚本自动构建镜像、校验数据、初始化并启动服务；不自动停用旧 systemd 服务，也不删除数据。镜像内使用 Python 3.14，服务始终为单 worker。`docker compose -f compose.webui.yaml ps` 可查看状态，`curl -fsS http://127.0.0.1:8765/` 可检查首页。
 
-Python 安装在 `/opt/autodeploykit/python-3.14`，不替换系统 Python。升级期间服务会短暂中断。卸载需输入 `UNINSTALL` 确认，保留数据目录、根密钥和服务账号。
+部署位置：
 
-默认位置：
-
-| 内容 | 路径 |
+| 内容 | 容器内路径 / 主机端口 |
 | --- | --- |
-| 程序 | `/opt/autodeploykit` |
-| 数据 | `/var/lib/autodeploykit` |
-| 巡检报告 | `/var/lib/autodeploykit/reports` |
-| 加密根密钥 | `/etc/autodeploykit/master.key` |
-| 服务地址 | `127.0.0.1:8765` |
+| 程序 | 镜像内 Python 包；`/opt/autodeploykit` 为只读工作目录及规则文件 |
+| 数据卷 `webui_data` | `/var/lib/autodeploykit`（数据库与 `reports/`） |
+| 密钥卷 `webui_key` | `/etc/autodeploykit/master.key`（运行时只读） |
+| 访问地址 | 主机 `127.0.0.1:8765` |
 
-可在安装前设置 `WEBUI_INSTALL_DIR`、`WEBUI_DATA_DIR`、`WEBUI_CONFIG_DIR`，使用互不重叠的规范绝对目录。
+两个命名卷的实际名称带有 Compose 项目前缀，请用 `docker compose -f compose.webui.yaml config` 核对。备份数据库及报告时需确保没有写入，同时单独备份根密钥卷；恢复时同时恢复两者，不要在丢失密钥时重新安装。迁移原 systemd 部署时，管理员须先备份、停用旧服务并移除旧服务单元（保留数据和根密钥），将原数据目录与根密钥分别迁入对应卷后再运行 `upgrade`；不要让旧服务与容器同时写同一数据库。脚本不自动停用旧服务或删除旧文件、卷。
 
-通过同机反向代理配置 HTTPS 和内网访问限制后，登录 WebUI，登记主机及 SSH 登录凭据，再执行巡检或查看历史报告。WebUI 不读取或导入 CLI 的 `hosts`；使用页面生成的 SSH 公钥时，需自行将公钥配置到目标服务器。当前不提供任意命令执行或服务修改。
+通过同机反向代理配置 HTTPS 和内网访问限制后，登录 WebUI，登记主机及 SSH 登录凭据，再执行巡检或查看历史报告。容器须能访问目标 SSH 主机及模型 API；配置模型地址时，容器内的 `localhost` 指向容器自身。不要挂载 Docker socket 或把服务端口公开到公网。WebUI 不读取或导入 CLI 的 `hosts`；使用页面生成的 SSH 公钥时，需自行将公钥配置到目标服务器。当前不提供任意命令执行或服务修改。
 
 ### 本地启动
 
@@ -194,7 +187,7 @@ WEBUI_DATA_DIR=/absolute/data/path WEBUI_KEY_FILE=/another/absolute/path/master.
 - 跳板机场景请正确填写 `proxy*` 参数。
 - RabbitMQ 4.2 和 CentOS 7 已结束社区支持，使用前请评估安全与维护风险。
 - WebUI 数据库与根密钥必须分别备份；任一丢失时，不要创建新密钥覆盖旧密钥。
-- WebUI 安装脚本不校验 Python 源码包的 SHA256 或发布签名，请确保下载渠道和本地源码包可信。
+- WebUI 镜像构建会下载 Python 依赖；请从可信来源构建镜像并审查依赖。
 - SSH 首次连接不会验证主机身份，存在中间人风险；请限制在受控网络使用，不要直接将 WebUI 暴露到公网。
 
 ## 许可证

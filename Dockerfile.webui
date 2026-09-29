@@ -1,0 +1,32 @@
+FROM python:3.14-slim AS build
+
+WORKDIR /src
+COPY pyproject.toml README.md cli.py ./
+COPY middleware_ops/ ./middleware_ops/
+COPY monitor_ops/ ./monitor_ops/
+COPY server_check/ ./server_check/
+COPY server_ops/ ./server_ops/
+COPY software_ops/ ./software_ops/
+COPY utils/ ./utils/
+COPY webui/ ./webui/
+COPY config/webui/ ./config/webui/
+RUN pip wheel --no-cache-dir --wheel-dir /wheels ".[web]"
+
+FROM python:3.14-slim
+COPY --from=build /wheels /wheels
+RUN pip install --no-index --find-links=/wheels "autodeploykit[web]" \
+    && rm -rf /wheels \
+    && groupadd --gid 10001 autodeploykit \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent autodeploykit \
+    && mkdir -p /opt/autodeploykit /var/lib/autodeploykit /etc/autodeploykit \
+    && chown autodeploykit:autodeploykit /var/lib/autodeploykit /etc/autodeploykit
+COPY config/webui/AGENTS.md config/webui/CLAUDE.md /opt/autodeploykit/
+
+WORKDIR /opt/autodeploykit
+ENV WEBUI_DATA_DIR=/var/lib/autodeploykit \
+    WEBUI_KEY_FILE=/etc/autodeploykit/master.key \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+USER autodeploykit
+EXPOSE 8765
+CMD ["python", "-m", "uvicorn", "webui.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8765", "--workers", "1"]
