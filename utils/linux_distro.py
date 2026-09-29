@@ -41,12 +41,18 @@ def _parse_os_release(content):
 
 
 def get_linux_distribution(client):
-    """Read /etc/os-release via an existing SSH client; unknown RPM series is None.
+    """Read /etc/os-release via an existing SSH client; reject unsupported RPM series.
 
     el_series is an RPM packaging hint, not a claim that a derivative is CentOS.
-    Raises RuntimeError on read failure and ValueError on missing/invalid ID.
+    Raises RuntimeError on read failure and ValueError on invalid or unsupported systems.
     """
     content, error, status = run_command(client, "cat /etc/os-release")
     if status != 0:
-        raise RuntimeError(f"无法读取 /etc/os-release：{error or content or f'退出码 {status}'}")
-    return _parse_os_release(content)
+        raise RuntimeError(f"无法识别目标系统：无法读取 /etc/os-release：{error or content or f'退出码 {status}'}")
+    try:
+        distribution = _parse_os_release(content)
+    except ValueError as exc:
+        raise ValueError(f"无法识别目标系统：{exc}") from exc
+    if distribution["el_series"] is None:
+        raise ValueError("不支持的系统：" + distribution["pretty_name"])
+    return distribution

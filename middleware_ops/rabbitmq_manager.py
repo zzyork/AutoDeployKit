@@ -12,7 +12,7 @@ from getpass import getpass
 from colorama import Fore
 
 from utils.choice import confirm_yes_no, menu_choice
-from utils.file_utils import get_eol_date, get_stable_version, remote_download_or_upload, upload_file
+from utils.file_utils import get_eol_date, get_stable_version, upload_file
 from utils.linux_distro import get_linux_distribution
 from utils.output import print_error, print_info, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
@@ -58,24 +58,12 @@ def install_rabbitmq(client, version=None):
     if status != 1:
         print_error("无法检查 RabbitMQ CLI：" + error)
         return
-    installed, error, status = run_command(client, "find /usr/local -maxdepth 3 -name rabbitmqctl -print")
-    if status != 0 or installed:
-        print_error("发现已有 RabbitMQ 或无法检查安装目录：" + (error or installed))
-        return
     for path in (install_path, profile_path, service_path, "/usr/lib/systemd/system/rabbitmq-server.service"):
         _, error, status = run_command(client, "test -e " + path + " || test -L " + path)
         if status != 1:
             print_error("安装目标已存在或无法检查，不会覆盖：" + path + " " + error)
             return
-    try:
-        distribution = get_linux_distribution(client)
-    except (RuntimeError, ValueError) as exc:
-        print_error("无法识别目标系统：" + str(exc))
-        return
-    el_version = distribution["el_series"]
-    if el_version not in ERLANG_SHA256:
-        print_error("不支持的系统：" + distribution["pretty_name"])
-        return
+    el_version = get_linux_distribution(client)["el_series"]
     arch, error, status = run_command(client, "uname -m")
     if status != 0 or arch != "x86_64":
         print_error("当前已核验的 Erlang RPM 仅支持 x86_64：" + (error or arch))
@@ -101,7 +89,6 @@ def install_rabbitmq(client, version=None):
         if not re.fullmatch(r"/[A-Za-z0-9_./+-]+", erl_path):
             print_error("无法安全地将 Erlang 路径用于 systemd：" + erl_path)
             return
-        print_info("复用 Erlang " + current_erlang)
     else:
         erl_path = "/usr/bin/erl"
 
@@ -110,14 +97,12 @@ def install_rabbitmq(client, version=None):
     print_warning("RabbitMQ 4.2 社区支持已于 2026-07-31 结束。")
     if el_version == "7":
         print_warning("CentOS/RHEL 7 已结束支持，使用官方一次性 el7 Erlang RPM")
-    erlang_action = f"安装 Erlang {ERLANG_VERSION}（el{el_version} RPM）" if install_erlang else f"复用 Erlang {current_erlang}"
     print_info(
-        f"将通过 {package_manager} 安装 socat、ncurses-compat-libs、wget、xz；{erlang_action}；"
-        f"下载包到 /usr/local/src；将 RabbitMQ {RABBITMQ_VERSION} 解压到 {install_path}；"
-        f"写入 {profile_path}。不会添加 RabbitMQ 软件源、升级 OpenSSL 或修改防火墙。"
+        f"将安装 RabbitMQ {RABBITMQ_VERSION} 到 {install_path}，"
+        f"{'安装 Erlang ' + ERLANG_VERSION if install_erlang else '复用 Erlang ' + current_erlang}，"
+        f"并写入 {profile_path}。"
     )
     if not confirm_yes_no("是否确认以上安装操作？", default=False):
-        print_warning("已取消 RabbitMQ 安装")
         return
     for command in (f"{package_manager} -y install socat ncurses-compat-libs wget xz", "mkdir -p /usr/local/src"):
         output, status = run_command_live(client, command)
@@ -137,33 +122,32 @@ def install_rabbitmq(client, version=None):
             except RuntimeError as exc:
                 print_error(str(exc))
                 return
-        elif not remote_download_or_upload(client, url, local_path, remote_path):
-            return
+        else:
+            output, status = run_command_live(client, "wget --tries=1 --timeout=30 -O " + remote_path + " " + url)
+            if status != 0:
+                print_error("下载失败：" + filename + " " + output)
+                return
         digest, error, status = run_command(client, "sha256sum " + remote_path)
         if status != 0 or not digest.split() or digest.split()[0] != checksum:
             print_error("安装包 SHA256 校验失败，不会安装或解压：" + filename + " " + error)
             return
     if install_erlang:
-        for command in (
-            "rpm -ivh --test /usr/local/src/" + erlang_package,
-            "rpm -ivh /usr/local/src/" + erlang_package,
-        ):
-            output, status = run_command_live(client, command)
-            if status != 0:
-                print_error("Erlang RPM 安装失败；不会强制忽略依赖或升级 OpenSSL：" + output)
-                return
+        output, status = run_command_live(client, "rpm -ivh /usr/local/src/" + erlang_package)
+        if status != 0:
+            print_error("Erlang RPM 安装失败：" + output)
+            return
         current_erlang, error, status = run_command(client, ERLANG_VERSION_COMMAND)
         if status != 0 or current_erlang != ERLANG_VERSION:
             print_error("Erlang 版本或 crypto 运行验证失败：" + (error or current_erlang))
             return
-    # Extract directly into a new directory instead of moving an existing tree.
+    # Create a new directory so existing data is never replaced.
     output, status = run_command_live(
         client,
         "mkdir " + install_path + " && tar -xJf /usr/local/src/" + rabbitmq_package
         + " --strip-components=1 -C " + install_path,
     )
     if status != 0:
-        print_error("RabbitMQ 解压失败；保留现场，不会自动删除目录：" + output)
+        print_error("RabbitMQ 解压失败：" + output)
         return
     ctl = install_path + "/sbin/rabbitmqctl"
     installed, error, status = run_command(client, ctl + " version")
@@ -175,7 +159,7 @@ def install_rabbitmq(client, version=None):
         client, "(set -C; printf %s " + shlex.quote(profile) + " > " + profile_path + ")"
     )
     if status != 0:
-        print_error("环境变量配置失败，不会覆盖已有文件：" + output)
+        print_error("环境变量配置失败：" + output)
         return
     print_success(f"RabbitMQ {installed} 安装完成：{install_path}；Erlang {current_erlang}")
     _configure_rabbitmq(client, install_path, erl_path)
@@ -189,7 +173,6 @@ def _configure_rabbitmq(client, install_path, erl_path):
         if status != 0:
             print_error("启用管理插件失败：" + output)
             return
-        print_info("管理界面端口为 15672；不会关闭防火墙或放开 guest 的远程访问")
     _, _, status = run_command(client, "test -d /run/systemd/system")
     if status != 0:
         print_warning("未检测到运行中的 systemd，跳过服务配置及管理员创建")
@@ -206,7 +189,6 @@ def _configure_rabbitmq(client, install_path, erl_path):
     print_info("拟写入 " + service_path + "，随后执行 systemctl daemon-reload：\n" + service)
     print_warning("按文档使用 root 运行服务；生产环境建议另行评估专用账号")
     if not confirm_yes_no("是否创建以上 systemd 服务并重新加载配置？", default=False):
-        print_info("服务未启动，已跳过 systemd 配置及管理员创建")
         return
     for command in (
         "(set -C; printf %s " + shlex.quote(service) + " > " + service_path + ")",
@@ -214,26 +196,23 @@ def _configure_rabbitmq(client, install_path, erl_path):
     ):
         output, status = run_command_live(client, command)
         if status != 0:
-            print_error("systemd 配置失败，不会覆盖已有服务：" + output)
+            print_error("systemd 配置失败：" + output)
             return
     if not confirm_yes_no("是否执行 systemctl start rabbitmq-server 并设置开机自启？", default=False):
-        print_info("服务未启动，已跳过管理员创建")
         return
-    for command in ("systemctl start rabbitmq-server", "systemctl enable rabbitmq-server"):
-        output, status = run_command_live(client, command)
-        if status != 0:
-            print_error("服务启动或自启配置失败：" + output)
-            return
+    output, status = run_command_live(client, "systemctl start rabbitmq-server")
+    if status != 0:
+        print_error("RabbitMQ 启动失败：" + output)
+        return
     ctl = install_path + "/sbin/rabbitmqctl"
-    for command in (
-        ctl + " --timeout 60 await_startup",
-        "systemctl is-active rabbitmq-server",
-        ctl + " status",
-    ):
-        output, error, status = run_command(client, command)
-        if status != 0:
-            print_error("RabbitMQ 启动验证失败，请检查主机名解析及服务日志：" + (error or output))
-            return
+    output, error, status = run_command(client, ctl + " --timeout 60 await_startup")
+    if status != 0:
+        print_error("RabbitMQ 启动验证失败：" + (error or output))
+        return
+    output, status = run_command_live(client, "systemctl enable rabbitmq-server")
+    if status != 0:
+        print_error("RabbitMQ 开机自启配置失败：" + output)
+        return
     print_success("RabbitMQ 服务已启动并设置开机自启")
     _create_rabbitmq_admin(client, ctl)
 
@@ -289,11 +268,7 @@ def _create_rabbitmq_admin(client, ctl):
         if status != 0:
             print_error("admin 已创建，但角色或权限设置失败，请人工核查：" + output)
             return
-    users, error, status = run_command(client, ctl + " list_users")
-    if status != 0:
-        print_error("管理员设置完成，但无法读取用户列表：" + error)
-        return
-    print_success("admin 管理员配置完成：\n" + users)
+    print_success("admin 管理员配置完成")
 
 
 def upgrade_rabbitmq(client, version=None):
