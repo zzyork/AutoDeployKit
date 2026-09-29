@@ -110,6 +110,24 @@ def install_redis(client, version=None):
             "ln -fs " + shlex.quote(install_path.rstrip("/") + "/bin/redis-server") + " /usr/bin/redis-server",
             "ln -fs " + shlex.quote(install_path.rstrip("/") + "/bin/redis-cli") + " /usr/bin/redis-cli",
             "mkdir -p " + shlex.quote(config_dir),
+            "chown root:redis "
+            + " ".join(
+                shlex.quote(path)
+                for path in (
+                    install_path.rstrip("/"),
+                    install_path.rstrip("/") + "/bin",
+                    config_dir,
+                )
+            ),
+            "chmod 750 "
+            + " ".join(
+                shlex.quote(path)
+                for path in (
+                    install_path.rstrip("/"),
+                    install_path.rstrip("/") + "/bin",
+                    config_dir,
+                )
+            ),
             "cp " + shlex.quote(source_dir + "/redis.conf") + " " + shlex.quote(config_path),
             "mkdir -p " + shlex.quote(data_dir) + " && chown redis:redis " + shlex.quote(data_dir),
             "mkdir -p " + shlex.quote(log_parent_dir) + " && chown redis:redis " + shlex.quote(log_parent_dir),
