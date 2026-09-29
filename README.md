@@ -41,7 +41,7 @@ WebUI 第一版的范围和安全边界见 [实施计划](docs/plans/2026-09-28-
 - Redis 管理
 - RabbitMQ 安装（Erlang 官方 RPM + RabbitMQ 通用二进制包；默认 RabbitMQ `4.2.0` / Erlang `27.3.4.11`）
 
-> 安装前检查系统、架构及已有安装。CentOS/RHEL 7/8/9、Rocky Linux、AlmaLinux、Oracle Linux 根据主版本选择 el7/el8/el9 RPM；openEuler 22.03 固定使用 el8 RPM，不升级 OpenSSL。当前已核验的安装包仅支持 `x86_64`。已有可用 Erlang 27.x 会复用，其他版本不会自动替换。
+> 安装前通过 `utils/linux_distro.py` 检查系统、架构及已有安装。CentOS/RHEL 7/8/9、Rocky Linux、AlmaLinux、Oracle Linux 根据主版本选择 el7/el8/el9 RPM；openEuler 22.03 和 HCE 2.0 使用 el8 RPM，不升级 OpenSSL。当前已核验的安装包仅支持 `x86_64`。已有可用 Erlang 27.x 会复用，其他版本不会自动替换。
 
 > 通过 `dnf` / `yum` 安装 `socat`、`ncurses-compat-libs`、`wget`、`xz`；安装包保存到 `/usr/local/src`，RabbitMQ 安装到 `/usr/local/rabbitmq_server4.2`，环境变量写入 `/etc/profile.d/rabbitmq.sh`。不添加 RabbitMQ 软件源。优先上传 `packages/` 中的同名安装包，否则从 GitHub 下载，失败后复用现有本地下载上传流程；所有安装包均按官方发布资产的 SHA256 校验。团队软件库的包也可按原文件名放入 `packages/`，但必须与官方包一致。
 

@@ -13,6 +13,7 @@ from colorama import Fore
 
 from utils.choice import confirm_yes_no, menu_choice
 from utils.file_utils import get_eol_date, get_stable_version, remote_download_or_upload, upload_file
+from utils.linux_distro import get_linux_distribution
 from utils.output import print_error, print_info, print_success, print_warning
 from utils.ssh_utils import run_command, run_command_live
 
@@ -33,24 +34,6 @@ ERLANG_VERSION_COMMAND = (
         '{ok, _} = application:ensure_all_started(crypto), io:put_chars(V), halt().'
     )
 )
-
-
-def _erlang_rpm_series(os_release):
-    values = {}
-    for line in os_release.splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key in ("ID", "VERSION_ID"):
-            parts = shlex.split(value, comments=True)
-            if len(parts) != 1:
-                raise ValueError("无效的 /etc/os-release 字段：" + key)
-            values[key] = parts[0]
-    distro, version = values.get("ID", "").lower(), values.get("VERSION_ID", "")
-    if distro == "openeuler" and version == "22.03":
-        return "8"
-    major = version.split(".")[0]
-    if distro in ("centos", "rhel", "rocky", "almalinux", "ol") and major in ERLANG_SHA256:
-        return major
-    raise ValueError("不支持的系统：" + distro + " " + version)
 
 
 def install_rabbitmq(client, version=None):
@@ -84,14 +67,14 @@ def install_rabbitmq(client, version=None):
         if status != 1:
             print_error("安装目标已存在或无法检查，不会覆盖：" + path + " " + error)
             return
-    os_release, error, status = run_command(client, "cat /etc/os-release")
-    if status != 0:
-        print_error("无法识别目标系统：" + error)
-        return
     try:
-        el_version = _erlang_rpm_series(os_release)
-    except ValueError as exc:
-        print_error(str(exc))
+        distribution = get_linux_distribution(client)
+    except (RuntimeError, ValueError) as exc:
+        print_error("无法识别目标系统：" + str(exc))
+        return
+    el_version = distribution["el_series"]
+    if el_version not in ERLANG_SHA256:
+        print_error("不支持的系统：" + distribution["pretty_name"])
         return
     arch, error, status = run_command(client, "uname -m")
     if status != 0 or arch != "x86_64":
@@ -124,7 +107,7 @@ def install_rabbitmq(client, version=None):
 
     erlang_package = f"erlang-{ERLANG_VERSION}-1.el{el_version}.x86_64.rpm"
     rabbitmq_package = f"rabbitmq-server-generic-unix-{RABBITMQ_VERSION}.tar.xz"
-    print_warning("RabbitMQ 4.2 社区支持已于 2026-07-31 结束；本流程按指定版本安装")
+    print_warning("RabbitMQ 4.2 社区支持已于 2026-07-31 结束。")
     if el_version == "7":
         print_warning("CentOS/RHEL 7 已结束支持，使用官方一次性 el7 Erlang RPM")
     erlang_action = f"安装 Erlang {ERLANG_VERSION}（el{el_version} RPM）" if install_erlang else f"复用 Erlang {current_erlang}"
