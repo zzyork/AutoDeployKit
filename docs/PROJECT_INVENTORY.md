@@ -81,7 +81,7 @@
 | node-exporter 安装 | `monitor_ops/node_exporter.py` | CLI 菜单已接入 |
 | mysqld-exporter 安装 | `monitor_ops/mysql_exporter.py` | CLI 菜单已接入 |
 | redis-exporter 安装 | `monitor_ops/redis_exporter.py` | CLI 菜单已接入 |
-| Docker 和 Compose 管理 | `software_ops/docker_manager.py` | CLI 菜单已接入 |
+| Docker 和 Compose 管理 | `software_ops/docker_manager.py` | CLI 菜单已接入；Docker 安装前校验配置模板并检查命令结果 |
 | Minio 管理 | `software_ops/minio_manager.py` | CLI 菜单已接入 |
 | Supervisor 管理和 ini 管理 | `software_ops/supervisor_manager.py` | CLI 菜单已接入；远程修改受根目录规则约束 |
 | JDK 查询和安装 | `software_ops/jdk_manager.py` | CLI 菜单已接入 |
@@ -137,7 +137,7 @@
 | 文件 | 模块职责 | 关键符号 |
 | --- | --- | --- |
 | `software_ops/main.py` | 注册软件菜单 | `operations`、`run` |
-| `software_ops/docker_manager.py` | Docker、Compose 安装和检查 | `install_docker`、`install_docker_compose`、`manage_docker` |
+| `software_ops/docker_manager.py` | Docker、Compose 安装、Docker 配置校验和失败检查 | `install_docker`、`install_docker_compose`、`manage_docker` |
 | `software_ops/minio_manager.py` | Minio 安装和管理 | `install_minio`、`manage_minio` |
 | `software_ops/supervisor_manager.py` | Supervisor 安装和 ini 增删改 | `install_supervisor`、`configure_ini`、`add_ini`、`modify_ini`、`delete_ini`、`manage_supervisor` |
 | `software_ops/jdk_manager.py` | JDK 版本查询、下载和安装 | `get_current_jdk_version`、`get_foojay_jdk_package`、`install_jdk`、`manage_jdk` |
@@ -221,7 +221,7 @@
 
 | 目录 | 文件 |
 | --- | --- |
-| `config/docker/` | `daemon.json`、`docker.service`、`docker.socket` |
+| `config/docker/` | `daemon.json`（有效 JSON）、`docker.service`、`docker.socket` |
 | `config/linux/` | `.vimrc`、`sysctl.conf`、`temp.repo` |
 | `config/minio/` | `minio.conf`、`minio.service` |
 | `config/mysql/` | `my.cnf`、`mysqld.service` |
@@ -241,6 +241,7 @@
 | `scripts/server_check_offline.sh` | 离线巡检辅助脚本 |
 | `tests/test_rabbitmq_distro.py` | RabbitMQ 发行版识别、架构限制和菜单无写入回归测试 |
 | `tests/test_redis_config.py` | Redis 配置指令替换和敏感值转义回归测试 |
+| `tests/test_docker_install.py` | Docker 配置模板合法性和安装失败路径回归测试 |
 | `tests/` 中被 `.gitignore` 忽略的其他测试文件 | 工作区可能存在，但不作为版本库清单；新增正式测试时要同步 `.gitignore` 和本文件 |
 
 ## 不纳入内容
@@ -260,3 +261,4 @@
 | --- | --- |
 | 2026-09-29 | 初始建立仓库目录、文件、模块、功能和入口索引；同步登记根目录 Agent 规则，明确 Agent 优先定位与每次变更同步要求。 |
 | 2026-09-29 | 修复 Redis 配置模板替换、密码传递、安装目录权限和 Redis Exporter systemd 模板，并新增 Redis 配置回归测试。 |
+| 2026-09-29 | 修复 Docker daemon.json 模板非 JSON 注释、安装配置校验及命令失败误报成功，并新增 Docker 安装回归测试。 |

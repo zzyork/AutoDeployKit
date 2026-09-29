@@ -1,3 +1,4 @@
+import json
 import os
 from utils.file_utils import download_file, upload_file, get_stable_version, remote_download_or_upload
 from utils.output import print_info, print_error, print_warning, print_success
@@ -27,15 +28,23 @@ def install_docker(client):
             output, cmd_status = run_command_live(client, cmd)
             if cmd_status != 0 :
                 print_error(f"\n命令执行失败: {cmd}")
-                print_warning("中止当前操作，返回上一级菜单\n")
-                break
+                return None
 
         if confirm_yes_no("是否自动配置 daemon.json 配置文件？", default=False):
-            run_command(client, "mkdir -p /etc/docker")
             local_path = os.path.join("config", "docker", "daemon.json")
+            try:
+                with open(local_path, encoding="utf-8") as config_file:
+                    if not isinstance(json.load(config_file), dict):
+                        raise ValueError("根节点必须是 JSON 对象")
+            except (OSError, UnicodeError, ValueError) as exc:
+                print_error(f"Docker 配置模板无效，停止安装: {exc}")
+                return None
+            _, error, cmd_status = run_command(client, "mkdir -p /etc/docker /data/docker-data")
+            if cmd_status != 0:
+                print_error(f"创建 Docker 配置目录失败: {error}")
+                return None
             remote_path = "/etc/docker/daemon.json"
             upload_file(client, local_path, remote_path)
-            run_command(client, "mkdir -p /data/docker-data")
 
         if confirm_yes_no("是否配置systemd守护进程？", default=False):
             local_path = os.path.join("config", "docker", "docker.service")
@@ -49,16 +58,23 @@ def install_docker(client):
                 print_success("systemd守护进程配置完成\n")
             else:
                 print_error("systemd守护进程配置失败")
+                return None
 
         if confirm_yes_no("是否配置systemd守护进程自启？"):
-            run_command_live(client, "systemctl enable docker")
+            _, cmd_status = run_command_live(client, "systemctl enable docker")
+            if cmd_status != 0:
+                print_error("Docker 服务自启配置失败")
+                return None
             print_success("systemd守护进程自启配置完成\n")
 
         if confirm_yes_no("是否启动Docker服务？"):
-            run_command_live(client, "systemctl start docker")
+            _, cmd_status = run_command_live(client, "systemctl start docker")
+            if cmd_status != 0:
+                print_error("Docker 服务启动失败，请查看 journalctl -u docker.service -b")
+                return None
             print_success("Docker服务启动完成\n")
-            current_version, _, status = run_command(client, r'docker -v 2>&1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -n1')
-            current_version = current_version.strip() if current_version else ""
+        current_version, _, _ = run_command(client, "docker -v")
+        current_version = current_version.strip() if current_version else "未知"
         print_info("安装完成！当前docker版本：" + current_version)
 
     else:
