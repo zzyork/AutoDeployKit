@@ -282,6 +282,21 @@ warnings = result["warnings"]
 - 日志默认只提供诊断；设置 `success_pattern=r"ready for connections"` 后，还必须在日志中匹配该正则（忽略大小写）。错误关键字记录在 `checks["logs"]["error_matches"]` 和 `warnings` 中，不直接判定启动失败；读取日志失败且指定了成功关键字时，检测不通过。
 - 返回整体 `success`、实际 `attempts`、各项 `checks` 和 `warnings`；检查项保留命令、标准输出、错误输出、退出码和通过状态。`retries` 为总尝试次数，`interval` 为尝试间隔，不是 SSH 超时；该工具验证运行状态，不代表业务接口已经就绪。
 
+## Linux 发行版识别工具
+
+`utils.linux_distro.get_linux_distribution(client)` 接收已有 SSH 连接，只读读取目标机的 `/etc/os-release`。返回 `id`、`version_id`、`pretty_name`、`id_like`（元组）和 `el_series`（RPM 包系列字符串或 `None`）；保留原发行版身份，不把衍生版改写为 CentOS。
+
+```python
+from utils.linux_distro import get_linux_distribution
+
+distro = get_linux_distribution(client)
+if distro["el_series"] == "8":
+    # 根据具体软件的兼容性要求再决定是否使用 el8 包。
+    pass
+```
+
+当前仅映射 CentOS/RHEL/Rocky/AlmaLinux/Oracle Linux 的 7/8/9、openEuler 22.03 和 HCE 2.0（后两者对应 `el8`）；未知版本返回 `None`，不根据 `ID_LIKE` 猜测包兼容性。读取失败或缺失有效 `ID` 时抛出异常。此工具不建立 SSH 连接，也不改变现有安装流程。
+
 ---
 
 ## 注意事项
