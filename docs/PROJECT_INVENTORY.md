@@ -54,9 +54,9 @@
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
-| `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；安装脚本通过容器启动 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init` | 初始化 WebUI 数据目录、根密钥和管理员口令；容器安装从标准输入读取口令 |
-| `scripts/install_webui.sh` | `WEBUI_ADMIN_PASSWORD_FILE=/absolute/path bash scripts/install_webui.sh install`；`bash scripts/install_webui.sh upgrade` | 无交互安装 Docker/Compose 并部署 WebUI 容器 |
+| `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；Compose 定义容器服务，当前安装脚本尚未调用 |
+| `webui.bootstrap:main` | `autodeploykit-webui-init` | 初始化 WebUI 数据目录、根密钥和管理员口令；首次设置口令要求本地终端 |
+| `scripts/install_webui.sh` | 当前仅定义 `check_docker`、`check_docker_compose`、`check_data_directory`，无执行入口 | 目录位置由 `check_data_directory` 交互输入；部署流程尚未接入 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -199,7 +199,7 @@
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
 | `compose.webui.yaml` | WebUI Docker Compose 服务、卷和端口定义 |
 | `Dockerfile.webui` | WebUI 镜像构建 |
-| `scripts/install_webui.sh` | WebUI 无交互安装和升级编排；缺失时安装项目同源的 Docker 静态包和独立 Compose |
+| `scripts/install_webui.sh` | WebUI 安装前检查函数；当前脚本无执行入口，目录创建尚未连接 Compose 数据卷 |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
 | `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
@@ -250,3 +250,4 @@
 | 2026-09-30 | 核对远端镜像构建流程时修正测试目录清单：当前测试源码文件未纳入版本控制。 |
 | 2026-09-30 | WebUI 安装改用项目 Docker 静态包与独立 Compose 流程，移除安装询问，首次安装从受限口令文件初始化管理员；同步公开用法并新增无交互自检。 |
 | 2026-09-30 | 明确清单仅收录 Git 已跟踪且计划推送的仓库文件，移除未纳入版本控制的文件及目录条目，并同步根目录 Agent 规则。 |
+| 2026-09-30 | 安装脚本目录检查改为交互输入绝对路径并创建；按当前脚本状态修正入口及部署描述。 |
