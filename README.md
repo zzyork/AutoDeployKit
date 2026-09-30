@@ -132,64 +132,6 @@ python cli.py server_check webservers
 
 并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
 
-## WebUI 安装与使用
-
-### 容器部署环境要求
-
-- Linux 主机、Docker Engine 和 Docker Compose 插件（`docker compose`）；脚本检测到缺失时会询问是否从本机已配置的 APT/DNF 仓库安装并启动 Docker，拒绝则退出
-- 安装 Docker 需要 root 或 sudo；运行脚本的账号还需有权访问本机 Docker 守护进程（Unix socket）。不支持的软件仓库或缺包时请先手动配置可信来源
-- 构建镜像时能访问 Python 包索引；主机不需要安装 Python 或 systemd 服务
-
-### 安装与升级
-
-将完整仓库放到部署主机，在交互终端安装：
-
-```bash
-bash scripts/install_webui.sh install
-```
-
-首次安装时脚本通过初始化容器在终端设置管理员口令；已有数据请使用 `upgrade`，不会重置口令。升级时先备份两个卷、获取新代码，保持原部署目录或 `COMPOSE_PROJECT_NAME` 不变，再运行 `bash scripts/install_webui.sh upgrade`。脚本自动构建镜像、校验数据、初始化并启动服务；不自动停用旧 systemd 服务，也不删除数据。镜像内使用 Python 3.14，服务始终为单 worker。`docker compose -f compose.webui.yaml ps` 可查看状态，`curl -fsS http://127.0.0.1:8765/` 可检查首页。
-
-部署位置：
-
-| 内容 | 容器内路径 / 主机端口 |
-| --- | --- |
-| 程序 | 镜像内 Python 包；`/opt/autodeploykit` 为只读工作目录及规则文件 |
-| 数据卷 `webui_data` | `/var/lib/autodeploykit`（数据库与 `reports/`） |
-| 密钥卷 `webui_key` | `/etc/autodeploykit/master.key`（运行时只读） |
-| 访问地址 | 主机 `127.0.0.1:8765` |
-
-两个命名卷的实际名称带有 Compose 项目前缀，请用 `docker compose -f compose.webui.yaml config` 核对。备份数据库及报告时需确保没有写入，同时单独备份根密钥卷；恢复时同时恢复两者，不要在丢失密钥时重新安装。迁移原 systemd 部署时，管理员须先备份、停用旧服务并移除旧服务单元（保留数据和根密钥），将原数据目录与根密钥分别迁入对应卷后再运行 `upgrade`；不要让旧服务与容器同时写同一数据库。脚本不自动停用旧服务或删除旧文件、卷。
-
-通过同机反向代理配置 HTTPS 和内网访问限制后，登录 WebUI，登记主机及 SSH 登录凭据，再执行巡检或查看历史报告。容器须能访问目标 SSH 主机及模型 API；配置模型地址时，容器内的 `localhost` 指向容器自身。不要挂载 Docker socket 或把服务端口公开到公网。WebUI 不读取或导入 CLI 的 `hosts`；使用页面生成的 SSH 公钥时，需自行将公钥配置到目标服务器。当前不提供任意命令执行或服务修改。
-
-### 本地启动
-
-在 Python 3.14 的独立虚拟环境中安装 WebUI 依赖：
-
-```bash
-pip install -e ".[web]"
-```
-
-在仓库外准备数据目录和根密钥目录，然后在本机终端初始化并启动：
-
-```bash
-autodeploykit-webui-init --data-dir /absolute/data/path --key-file /another/absolute/path/master.key
-WEBUI_DATA_DIR=/absolute/data/path WEBUI_KEY_FILE=/another/absolute/path/master.key python -m uvicorn webui.app:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
-```
-
-浏览器访问 `http://127.0.0.1:8765`。
-
-## 注意事项
-
-- 涉及磁盘分区、格式化、挂载的操作具有破坏性，请务必确认目标磁盘。
-- 若目标机器无法直接联网，可先将安装包放入 `packages/` 目录供上传使用；RabbitMQ 安装包须使用官方原文件名及内容。
-- 跳板机场景请正确填写 `proxy*` 参数。
-- RabbitMQ 4.2 和 CentOS 7 已结束社区支持，使用前请评估安全与维护风险。
-- WebUI 数据库与根密钥必须分别备份；任一丢失时，不要创建新密钥覆盖旧密钥。
-- WebUI 镜像构建会下载 Python 依赖；请从可信来源构建镜像并审查依赖。
-- SSH 首次连接不会验证主机身份，存在中间人风险；请限制在受控网络使用，不要直接将 WebUI 暴露到公网。
-
 ## 许可证
 
 本项目使用 MIT License，详见 `LICENSE`。

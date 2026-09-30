@@ -5,6 +5,7 @@
 ## 使用规则
 
 - 本文件是仓库级定位入口，不替代 `README.md` 的安装和使用说明，也不替代设计文档。
+- 只收录 Git 已跟踪且计划推送的仓库文件及其所在目录，以 `git ls-files` 核验；未跟踪、被忽略、仅在本机或仓库外存在、明确不推送的路径一律不记录。新增文件纳入版本控制后再登记。
 - 每次仓库变更都必须同步更新本文件；至少检查目录、文件、模块、功能、入口、关键符号和状态是否仍准确。纯文本或注释变更也要在“变更记录”中登记。
 - 新增、删除、移动或重命名目录/文件，新增或移除模块、功能、入口、接口、脚本、配置或测试时，必须在同一次变更中更新对应清单项。
 - Agent 的定位顺序：读取根目录 `AGENTS.md`/`CLAUDE.md` -> 读取本文件 -> 按“功能索引”定位模块和文件 -> 读取 `README.md` 确认公开用法 -> 搜索实现、入口和调用方。
@@ -24,7 +25,6 @@
 | `webui/` | Python 模块和静态资源 | FastAPI WebUI、资产、认证、任务、巡检和报告接口 |
 | `config/` | 配置模板 | Linux、Docker、MySQL、Nginx、Prometheus 等服务模板 |
 | `scripts/` | 运维脚本 | WebUI 安装、离线巡检、漏洞检查和 pip 引导 |
-| `tests/` | 测试 | 当前已纳入版本控制的最小回归测试 |
 | `docs/plans/` | 设计和实施文档 | WebUI 架构与版本实施记录 |
 
 ## 根目录文件
@@ -48,15 +48,15 @@
 
 | 入口 | 调用方式 | 说明 |
 | --- | --- | --- |
-| `cli.py:main` | `python cli.py <module_name> <host_pattern>`；安装后为 `autodeploykit` | 读取 `hosts`，建立 SSH 连接，动态导入 `<module_name>.main` 并调用 `run(clients)` |
+| `cli.py:main` | `python cli.py <module_name> <host_pattern>`；安装后为 `autodeploykit` | 读取本地主机配置，建立 SSH 连接，动态导入 `<module_name>.main` 并调用 `run(clients)` |
 | `server_ops/main.py:run` | `server_ops` | 服务器初始化菜单 |
 | `middleware_ops/main.py:run` | `middleware_ops` | 中间件管理菜单 |
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
-| `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入 `server_check/reporters` |
+| `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
 | `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；安装脚本通过容器启动 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init` | 初始化 WebUI 数据目录、根密钥和管理员口令 |
-| `scripts/install_webui.sh` | `bash scripts/install_webui.sh install|upgrade` | 构建并部署 WebUI 容器 |
+| `webui.bootstrap:main` | `autodeploykit-webui-init` | 初始化 WebUI 数据目录、根密钥和管理员口令；容器安装从标准输入读取口令 |
+| `scripts/install_webui.sh` | `WEBUI_ADMIN_PASSWORD_FILE=/absolute/path bash scripts/install_webui.sh install`；`bash scripts/install_webui.sh upgrade` | 无交互安装 Docker/Compose 并部署 WebUI 容器 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -65,7 +65,7 @@
 
 | 功能 | 首选模块/文件 | 当前状态 |
 | --- | --- | --- |
-| 主机清单解析和 SSH 连接 | `cli.py`、`utils/ssh_utils.py` | CLI 已接入；使用本地 `hosts`，不纳入清单内容 |
+| 主机清单解析和 SSH 连接 | `cli.py`、`utils/ssh_utils.py` | CLI 已接入；主机配置格式参见 `hosts.example` |
 | 主机名设置 | `server_ops/hostname_ops.py` | CLI 菜单已接入 |
 | 软件包和 DNF 仓库管理 | `server_ops/pkg_ops.py` | CLI 菜单已接入 |
 | firewalld/SELinux 管理 | `server_ops/firewall_ops.py` | CLI 菜单已接入 |
@@ -85,7 +85,7 @@
 | Minio 管理 | `software_ops/minio_manager.py` | CLI 菜单已接入 |
 | Supervisor 管理和 ini 管理 | `software_ops/supervisor_manager.py` | CLI 菜单已接入；远程修改受根目录规则约束 |
 | JDK 查询和安装 | `software_ops/jdk_manager.py` | CLI 菜单已接入 |
-| CLI 服务器巡检 | `server_check/main.py` | 已接入；默认报告目录为 `server_check/reporters` |
+| CLI 服务器巡检 | `server_check/main.py` | 已接入；默认报告目录参见 `README.md` |
 | WebUI 只读服务器巡检 | `webui/jobs.py`、`server_check/main.py` | 已接入；只允许登记且启用的资产 |
 | WebUI 资产和 SSH 密钥管理 | `webui/api.py`、`webui/storage.py` | 已接入；凭据加密存储 |
 | WebUI 会话、CSRF 和管理员认证 | `webui/api.py`、`webui/security.py`、`webui/storage.py` | 已接入 |
@@ -199,7 +199,7 @@
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
 | `compose.webui.yaml` | WebUI Docker Compose 服务、卷和端口定义 |
 | `Dockerfile.webui` | WebUI 镜像构建 |
-| `scripts/install_webui.sh` | WebUI 安装和升级编排 |
+| `scripts/install_webui.sh` | WebUI 无交互安装和升级编排；缺失时安装项目同源的 Docker 静态包和独立 Compose |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
 | `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
@@ -239,21 +239,6 @@
 | `scripts/generate_nginx_vulnerability_report.py` | 解析产品版本、构造结果行并输出 XLSX 报告 |
 | `scripts/get-pip.py` | 外部 pip 引导脚本；非 AutoDeployKit 业务模块 |
 | `scripts/server_check_offline.sh` | 离线巡检辅助脚本 |
-| `tests/test_rabbitmq_distro.py` | RabbitMQ 发行版识别、架构限制和菜单无写入回归测试 |
-| `tests/test_redis_config.py` | Redis 配置指令替换和敏感值转义回归测试 |
-| `tests/test_docker_install.py` | Docker 配置模板合法性和安装失败路径回归测试 |
-| `tests/` 中被 `.gitignore` 忽略的其他测试文件 | 工作区可能存在，但不作为版本库清单；新增正式测试时要同步 `.gitignore` 和本文件 |
-
-## 不纳入内容
-
-下列路径或内容可能存在于工作区，但不应复制到本文件，也不应提交真实信息：
-
-- `hosts`、`.env`：本机主机清单和环境密钥；仅允许记录用途，不记录内容。
-- `server_check/reporters/`、`.webui-data/`：运行时报告、数据库和数据卷；仅记录目录职责。
-- `.venv/`、`__pycache__/`、`.mypy_cache/`、`.pytest_cache/`、`.ruff_cache/`：环境和缓存。
-- `packages/`、`dist/`、构建产物和下载文件：二进制或临时产物。
-- `.git/`、`.idea/`、`.vscode/`、`output.log`：版本控制元数据、编辑器状态或本地日志。
-- 任何 SSH 密码、私钥、模型 API key、真实服务器地址、账号和报告正文。
 
 ## 变更记录
 
@@ -262,3 +247,6 @@
 | 2026-09-29 | 初始建立仓库目录、文件、模块、功能和入口索引；同步登记根目录 Agent 规则，明确 Agent 优先定位与每次变更同步要求。 |
 | 2026-09-29 | 修复 Redis 配置模板替换、密码传递、安装目录权限和 Redis Exporter systemd 模板，并新增 Redis 配置回归测试。 |
 | 2026-09-29 | 修复 Docker daemon.json 模板非 JSON 注释、安装配置校验及命令失败误报成功，并新增 Docker 安装回归测试。 |
+| 2026-09-30 | 核对远端镜像构建流程时修正测试目录清单：当前测试源码文件未纳入版本控制。 |
+| 2026-09-30 | WebUI 安装改用项目 Docker 静态包与独立 Compose 流程，移除安装询问，首次安装从受限口令文件初始化管理员；同步公开用法并新增无交互自检。 |
+| 2026-09-30 | 明确清单仅收录 Git 已跟踪且计划推送的仓库文件，移除未纳入版本控制的文件及目录条目，并同步根目录 Agent 规则。 |
