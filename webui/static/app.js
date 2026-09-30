@@ -1,4 +1,4 @@
-const state = { csrf: "", view: "workbench", conversation: null, job: null, eventSource: null, hosts: [], keys: [] };
+const state = { csrf: "", user: null, view: "workbench", conversation: null, job: null, eventSource: null, hosts: [], keys: [] };
 const $ = (selector) => document.querySelector(selector);
 const view = $("#view");
 const sidebar = $("#side-pane");
@@ -46,12 +46,21 @@ async function request(method, path, data, raw = false) {
 async function attempt(fn) { try { return await fn(); } catch (error) { notice(error.message || "操作失败", true); } }
 function showLogin() {
   state.csrf = "";
+  state.user = null;
+  state.job = null;
+  state.conversation = null;
   if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
   $("#shell").hidden = true;
   $("#login-screen").hidden = false;
-  $("#login-password").focus();
+  $("#login-username").focus();
 }
-function showApp() { $("#login-screen").hidden = true; $("#shell").hidden = false; navigate(state.view); }
+function showApp() {
+  $("#login-screen").hidden = true;
+  $("#shell").hidden = false;
+  $("#logout").textContent = "退出登录";
+  $("#logout").title = `当前账号：${state.user.username}`;
+  navigate(state.view);
+}
 
 function navigate(name) {
   state.view = name;
@@ -233,7 +242,7 @@ async function renderHosts() {
   const [hosts, keys] = await Promise.all([request("GET", "/api/hosts"), request("GET", "/api/ssh-keys")]);
   if (state.view !== "hosts") return;
   state.hosts = hosts; state.keys = keys;
-  $("#header-actions").append(action("登记资产", () => openHostDialog(), "primary"));
+  if (state.user.is_admin) $("#header-actions").append(action("登记资产", () => openHostDialog(), "primary"));
   const controls = element("div", "toolbar"), search = element("input"), group = element("select");
   search.placeholder = "搜索名称或地址"; search.setAttribute("aria-label", "搜索资产");
   group.append(new Option("全部分组", ""));
@@ -244,13 +253,16 @@ async function renderHosts() {
     const term = search.value.toLowerCase();
     const subset = hosts.filter((host) => (!group.value || host.group_name === group.value) && [host.name, host.address, host.username].some((value) => value.toLowerCase().includes(term)));
     results.replaceChildren(table(["资产", "地址", "分组", "认证", "状态", "操作"], subset, (host) => {
-      const actions = element("div", "row-actions"), toggle = action(host.enabled ? "停用" : "启用", () => attempt(async () => {
-        await request("PATCH", `/api/hosts/${host.id}`, { enabled: !host.enabled });
-        notice(host.enabled ? "资产已停用" : "资产已启用");
-        navigate("hosts");
-      }), "text-button");
-      toggle.classList.toggle("danger", !!host.enabled);
-      actions.append(action("编辑", () => openHostDialog(host), "text-button"), toggle);
+      const actions = element("div", "row-actions");
+      if (state.user.is_admin) {
+        const toggle = action(host.enabled ? "停用" : "启用", () => attempt(async () => {
+          await request("PATCH", `/api/hosts/${host.id}`, { enabled: !host.enabled });
+          notice(host.enabled ? "资产已停用" : "资产已启用");
+          navigate("hosts");
+        }), "text-button");
+        toggle.classList.toggle("danger", !!host.enabled);
+        actions.append(action("编辑", () => openHostDialog(host), "text-button"), toggle);
+      }
       return row(host.name, `${host.address}:${host.port}`, host.group_name, host.has_password ? "密码" : "SSH 密钥", element("span", `status ${host.enabled ? "succeeded" : "failed"}`, host.enabled ? "已启用" : "已停用"), actions);
     }));
   };
@@ -309,56 +321,109 @@ function openHostDialog(host = null) {
 }
 
 async function renderSettings() {
-  const [settings, keys] = await Promise.all([request("GET", "/api/settings"), request("GET", "/api/ssh-keys")]);
-  if (state.view !== "settings") return;
-  const stack = element("div", "stack"), modelSection = element("section", "settings-section"), modelForm = element("form");
-  modelSection.append(title("模型接口"));
+  const stack = element("div", "stack");
   function field(text, type, name, value = "") {
     const label = element("label", "", text), input = element("input");
     input.type = type; input.name = name; input.value = value; label.append(input); return label;
   }
-  modelForm.append(field("接口地址", "url", "base_url", settings.base_url), field("模型名称", "text", "model", settings.model), field(settings.has_api_key ? "API Key（已配置，留空保持不变）" : "API Key", "password", "api_key"), field("管理员口令", "password", "admin_password"));
-  const modelSubmit = element("button", "primary", "保存模型配置"); modelSubmit.type = "submit"; modelForm.append(modelSubmit);
-  modelForm.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
-    const values = Object.fromEntries(new FormData(modelForm));
-    if (!values.api_key) delete values.api_key;
-    await request("PATCH", "/api/settings", values); notice("模型配置已保存"); navigate("settings");
-  }); });
-  modelSection.append(modelForm);
+  if (state.user.is_admin) {
+    const [settings, keys, accounts] = await Promise.all([request("GET", "/api/settings"), request("GET", "/api/ssh-keys"), request("GET", "/api/users")]);
+    if (state.view !== "settings") return;
+    const modelSection = element("section", "settings-section"), modelForm = element("form");
+    modelSection.append(title("模型接口"));
+    modelForm.append(field("接口地址", "url", "base_url", settings.base_url), field("模型名称", "text", "model", settings.model), field(settings.has_api_key ? "API Key（已配置，留空保持不变）" : "API Key", "password", "api_key"), field("管理员口令", "password", "admin_password"));
+    const modelSubmit = element("button", "primary", "保存模型配置"); modelSubmit.type = "submit"; modelForm.append(modelSubmit);
+    modelForm.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
+      const values = Object.fromEntries(new FormData(modelForm));
+      if (!values.api_key) delete values.api_key;
+      await request("PATCH", "/api/settings", values); notice("模型配置已保存"); navigate("settings");
+    }); });
+    modelSection.append(modelForm);
 
-  const keySection = element("section", "settings-section"), keyForm = element("form"), keyName = field("密钥名称", "text", "name");
-  keySection.append(title("SSH 登录密钥"));
-  keyName.querySelector("input").required = true;
-  const keySubmit = element("button", "secondary", "生成密钥"); keySubmit.type = "submit";
-  keyForm.append(keyName, keySubmit);
-  keyForm.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
-    await request("POST", "/api/ssh-keys", { name: keyName.querySelector("input").value.trim() });
-    notice("密钥已生成"); navigate("settings");
-  }); });
-  keySection.append(keyForm);
-  keys.forEach((key) => {
-    const entry = element("div", "key-row");
-    entry.append(element("strong", "", key.name), element("code", "", key.public_key), action("复制公钥", () => attempt(async () => { await navigator.clipboard.writeText(key.public_key); notice("公钥已复制"); }), "text-button"));
-    keySection.append(entry);
-  });
-
+    const keySection = element("section", "settings-section"), keyForm = element("form"), keyName = field("密钥名称", "text", "name");
+    keySection.append(title("SSH 登录密钥"));
+    keyName.querySelector("input").required = true;
+    const keySubmit = element("button", "secondary", "生成密钥"); keySubmit.type = "submit";
+    keyForm.append(keyName, keySubmit);
+    keyForm.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
+      await request("POST", "/api/ssh-keys", { name: keyName.querySelector("input").value.trim() });
+      notice("密钥已生成"); navigate("settings");
+    }); });
+    keySection.append(keyForm);
+    keys.forEach((key) => {
+      const entry = element("div", "key-row");
+      entry.append(element("strong", "", key.name), element("code", "", key.public_key), action("复制公钥", () => attempt(async () => { await navigator.clipboard.writeText(key.public_key); notice("公钥已复制"); }), "text-button"));
+      keySection.append(entry);
+    });
+    stack.append(modelSection, keySection, renderAccounts(accounts, field));
+  }
   const passwordSection = element("section", "settings-section"), passwordForm = element("form");
-  passwordSection.append(title("修改管理员口令"));
-  passwordForm.append(field("当前口令", "password", "admin_password"), field("新口令", "password", "new_password"));
+  passwordSection.append(title("修改登录口令"));
+  passwordSection.append(element("p", "muted", `当前账号：${state.user.username}`));
+  passwordForm.append(field("当前口令", "password", "current_password"), field("新口令", "password", "new_password"));
   passwordForm.elements.new_password.minLength = 12;
   const passwordSubmit = element("button", "secondary", "更新口令"); passwordSubmit.type = "submit"; passwordForm.append(passwordSubmit);
   passwordForm.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
-    await request("PATCH", "/api/settings", Object.fromEntries(new FormData(passwordForm)));
+    await request("PATCH", "/api/users/me/password", Object.fromEntries(new FormData(passwordForm)));
     notice("口令已更新，请重新登录"); showLogin();
   }); });
   passwordSection.append(passwordForm);
-  stack.append(modelSection, keySection, passwordSection); view.append(stack);
+  stack.append(passwordSection);
+  if (state.view === "settings") view.append(stack);
+}
+
+function renderAccounts(accounts, field) {
+  const section = element("section", "settings-section"), form = element("form", "account-form");
+  section.append(title("账号管理"));
+  form.append(field("新账号", "text", "username"), field("初始口令", "password", "password"), field("管理员口令", "password", "admin_password"));
+  form.elements.username.required = true;
+  form.elements.username.pattern = "[a-z][a-z0-9_.-]{2,31}";
+  form.elements.password.required = true;
+  form.elements.password.minLength = 12;
+  form.elements.admin_password.required = true;
+  const submit = element("button", "secondary", "创建账号"); submit.type = "submit"; form.append(submit);
+  form.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
+    await request("POST", "/api/users", Object.fromEntries(new FormData(form)));
+    notice("账号已创建"); navigate("settings");
+  }); });
+  section.append(form, table(["账号", "权限", "状态", "操作"], accounts, (account) => {
+    const actions = element("div", "row-actions");
+    if (!account.is_admin) {
+      actions.append(action(account.is_active ? "停用" : "启用", () => attempt(async () => {
+        const password = form.elements.admin_password.value;
+        if (!password) throw new Error("请输入管理员口令");
+        await request("PATCH", `/api/users/${account.id}/status`, { is_active: !account.is_active, admin_password: password });
+        notice("账号状态已更新"); navigate("settings");
+      }), "text-button"));
+      actions.append(action("重置口令", () => openPasswordDialog(account), "text-button"));
+    }
+    return row(account.username, account.is_admin ? "管理员" : "普通用户", account.is_active ? "启用" : "停用", actions);
+  }));
+  return section;
+}
+
+function openPasswordDialog(account) {
+  const dialog = element("dialog", "editor-dialog"), form = element("form", "password-dialog");
+  form.append(title(`重置 ${account.username} 的口令`));
+  const newLabel = element("label", "", "新口令"), newPassword = element("input");
+  newPassword.type = "password"; newPassword.minLength = 12; newPassword.required = true; newPassword.autocomplete = "new-password"; newLabel.append(newPassword);
+  const adminLabel = element("label", "", "管理员口令"), adminPassword = element("input");
+  adminPassword.type = "password"; adminPassword.required = true; adminPassword.autocomplete = "current-password"; adminLabel.append(adminPassword);
+  const controls = element("div", "dialog-actions"), cancel = action("取消", () => dialog.close());
+  const submit = element("button", "primary", "更新口令"); submit.type = "submit";
+  controls.append(cancel, submit); form.append(newLabel, adminLabel, controls); dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  form.addEventListener("submit", (event) => { event.preventDefault(); attempt(async () => {
+    await request("PATCH", `/api/users/${account.id}/password`, { new_password: newPassword.value, admin_password: adminPassword.value });
+    dialog.close(); notice("口令已重置");
+  }); });
+  document.body.append(dialog); dialog.showModal(); newPassword.focus();
 }
 
 $("#login-form").addEventListener("submit", (event) => { event.preventDefault();
   attempt(async () => {
-    const result = await request("POST", "/api/login", { password: $("#login-password").value });
-    state.csrf = result.csrf_token; $("#login-password").value = ""; $("#login-error").textContent = ""; showApp();
+    const result = await request("POST", "/api/login", { username: $("#login-username").value.trim(), password: $("#login-password").value });
+    state.csrf = result.csrf_token; state.user = result.user; $("#login-password").value = ""; $("#login-error").textContent = ""; showApp();
   });
 });
 $("#logout").addEventListener("click", () => attempt(async () => { await request("POST", "/api/logout"); showLogin(); }));
@@ -372,6 +437,7 @@ for (const [id, text] of Object.entries({ workbench: "工作台", jobs: "任务"
 fetch("/api/session", { credentials: "same-origin" }).then(async (response) => {
   if (response.status === 401) { showLogin(); return; }
   if (!response.ok) throw new Error("无法读取登录状态");
-  state.csrf = (await response.json()).csrf_token;
+  const result = await response.json();
+  state.csrf = result.csrf_token; state.user = result.user;
   showApp();
 }).catch(() => showLogin());

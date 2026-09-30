@@ -132,6 +132,22 @@ python cli.py server_check webservers
 
 并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
 
+## WebUI 容器使用
+
+WebUI 需要 Docker Engine、独立命令 `docker-compose` v2 及可访问 Python 包索引的构建环境；仅有 `docker compose` 插件时请将下方命令相应替换。镜像标签为 `autodeploykit-webui:local`。
+
+在部署主机的交互终端、仓库目录下首次初始化并启动：
+
+```bash
+docker-compose -f compose.webui.yaml build webui
+docker-compose -f compose.webui.yaml --profile setup run --rm --no-deps init
+docker-compose -f compose.webui.yaml up -d --no-deps webui
+```
+
+初始化时随机创建 `admin` 账号，初始口令只在终端显示一次，不会以明文写入磁盘。请立即妥善保存并登录后修改；不能从容器日志找回。普通账号由管理员在设置页创建，能查看共享资产和报告并发起只读巡检，不能修改资产、SSH 凭据或模型配置。资产、SSH 公钥、会话、任务和报告对所有已登录账号共享，聊天内容不提供个人隔离。WebUI 只监听主机 `127.0.0.1:8765`，对外访问须经 HTTPS 反向代理并限制访问来源。反向代理必须透传原始 Host（例如 Nginx 的 `proxy_set_header Host $http_host;`），否则来源校验会拒绝登录；Compose 默认要求 HTTPS Cookie，本机直接通过 HTTP 登录时需在自有部署配置中取消 `WEBUI_SECURE_COOKIES=1`。
+
+已有管理员数据不会重新生成口令；旧版单管理员数据库可用原管理员口令登录，首次登录后自动迁移账号。升级前先安排停止旧实例的写入并分别备份数据库/报告卷和根密钥卷；升级时不要在旧服务运行期间执行 `init`，直接构建并替换 WebUI 服务，由新容器迁移会话表。不要在丢失根密钥后重新初始化。当前 `scripts/install_webui.sh` 尚未接入完整部署流程，不要用它代替以上命令。
+
 ## 许可证
 
 本项目使用 MIT License，详见 `LICENSE`。

@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.webui
+    environment:
+      WEBUI_SECURE_COOKIES: "1"
     restart: unless-stopped
     read_only: true
     tmpfs:

@@ -1,13 +1,30 @@
 import argparse
-import getpass
-import hmac
+import asyncio
 import os
+import secrets
 import sys
 from importlib.resources import files
 from pathlib import Path
 
 from webui.security import create_key_file
 from webui.storage import Database
+from webui.users import UserStore
+
+
+async def initialize_users(db):
+    users = UserStore(db)
+    try:
+        await users.initialize()
+        if await users.any_users() or db.admin_is_initialized():
+            print("管理员账号已存在，不重新生成口令。")
+            return
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise ValueError("首次初始化需要交互终端显示初始口令")
+        password = secrets.token_urlsafe(24)
+        await users.create("admin", password, admin=True)
+        print(f"初始账号：admin\n初始口令：{password}\n请立即将口令保存到安全位置。")
+    finally:
+        await users.close()
 
 
 def main():
@@ -35,17 +52,10 @@ def main():
     if args.create_key_only:
         return
     db.initialize()
-    if db.admin_is_initialized():
-        print("管理员口令已设置。")
-        return
-    if not sys.stdin.isatty():
-        parser.error("First initialization requires a local terminal")
-    password = getpass.getpass("设置管理员口令（至少 12 字符）：")
-    confirm = getpass.getpass("再次输入管理员口令：")
-    if not hmac.compare_digest(password, confirm):
-        parser.error("口令不一致")
-    db.set_admin_password(password)
-    print("管理员口令已设置。")
+    try:
+        asyncio.run(initialize_users(db))
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

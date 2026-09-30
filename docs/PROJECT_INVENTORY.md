@@ -38,7 +38,7 @@
 | `.dockerignore` | WebUI 镜像构建上下文排除规则 |
 | `cli.py` | CLI 主入口，详见“入口索引” |
 | `pyproject.toml` | 项目元数据和 Python 工具配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 定义 |
+| `compose.webui.yaml` | WebUI Docker Compose 服务、卷和 HTTPS Cookie 配置 |
 | `Dockerfile.webui` | WebUI 镜像构建定义 |
 | `README.md`、`README.en.md` | 中文和英文公开使用说明 |
 | `hosts.example` | CLI 主机清单格式示例；不含真实资产 |
@@ -55,7 +55,7 @@
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
 | `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；Compose 定义容器服务，当前安装脚本尚未调用 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init` | 初始化 WebUI 数据目录、根密钥和管理员口令；首次设置口令要求本地终端 |
+| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化随机管理员口令并只显示一次；已有管理员数据不覆盖 |
 | `scripts/install_webui.sh` | 当前仅定义 `check_docker`、`check_docker_compose`、`check_data_directory`，无执行入口 | 目录位置由 `check_data_directory` 交互输入；部署流程尚未接入 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
@@ -88,7 +88,7 @@
 | CLI 服务器巡检 | `server_check/main.py` | 已接入；默认报告目录参见 `README.md` |
 | WebUI 只读服务器巡检 | `webui/jobs.py`、`server_check/main.py` | 已接入；只允许登记且启用的资产 |
 | WebUI 资产和 SSH 密钥管理 | `webui/api.py`、`webui/storage.py` | 已接入；凭据加密存储 |
-| WebUI 会话、CSRF 和管理员认证 | `webui/api.py`、`webui/security.py`、`webui/storage.py` | 已接入 |
+| WebUI 多用户、会话和 CSRF | `webui/users.py`、`webui/api.py`、`webui/storage.py` | FastAPI Users 管理账号；资产、会话、任务及报告共享，管理员与普通账号权限分离，支持旧管理员口令迁移 |
 | WebUI 模型工具调用和风险摘要 | `webui/agent.py` | 仅开放 `inspect_servers`、`latest_inspection` |
 | WebUI 任务队列和 SSE 事件 | `webui/jobs.py`、`webui/api.py` | 已接入；单后台线程处理任务 |
 | WebUI 报告查询 | `webui/storage.py`、`webui/api.py` | 已接入；报告位于 WebUI 数据卷 |
@@ -180,15 +180,16 @@
 | 文件 | 模块职责 | 关键符号/接口 |
 | --- | --- | --- |
 | `webui/app.py` | 创建 FastAPI 应用、生命周期、静态资源和安全响应头 | `create_app`、`GET /` |
-| `webui/api.py` | 请求模型、认证依赖和 REST/SSE 路由 | `create_router`；登录、主机、SSH key、设置、聊天、会话、任务、报告接口 |
-| `webui/storage.py` | SQLite schema、加密凭据、资产、会话、会话消息、任务和报告 | `Database`；`initialize`、`add_host`、`update_host`、`resolve_hosts`、`connection_settings`、`create_job`、`update_job`、`report_path` |
-| `webui/security.py` | 根密钥文件和管理员密码处理 | `create_key_file`、`hash_password`、`verify_password` |
+| `webui/api.py` | 请求模型、认证与权限依赖和 REST/SSE 路由 | `create_router`；账号管理与登录、主机、SSH key、设置、聊天、会话、任务、报告接口 |
+| `webui/storage.py` | SQLite schema、加密凭据、资产、绑定用户的会话、任务和报告 | `Database`；`initialize`、`create_session`、`get_session`、`revoke_user_sessions`、`add_host`、`resolve_hosts`、`create_job`、`report_path` |
+| `webui/users.py` | FastAPI Users 与 SQLite 用户适配、认证和旧管理员迁移 | `UserStore`、`UserManager`、`User`、`public_user` |
+| `webui/security.py` | 根密钥文件和旧管理员密码哈希兼容 | `create_key_file`、`hash_password`、`verify_password` |
 | `webui/assets.py` | WebUI 资产字段校验 | `validate_host` |
 | `webui/jobs.py` | 单后台线程任务队列、远端巡检和 SSE 事件 | `JobRunner`；`enqueue`、`events`、`_process`、`_inspect_host` |
 | `webui/agent.py` | 模型请求、工具白名单、参数校验和安全摘要 | `TOOLS`、`decide`、`summarize` |
-| `webui/bootstrap.py` | 本地/容器初始化命令 | `main` |
+| `webui/bootstrap.py` | 本地/容器初始化命令，首次交互生成并显示随机 admin 口令 | `main`、`initialize_users` |
 | `webui/static/index.html` | WebUI 页面结构 | 单页入口 |
-| `webui/static/app.js` | 登录、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
+| `webui/static/app.js` | 多账号登录、账号管理、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
 | `webui/static/app.css` | WebUI 样式 | 页面样式 |
 | `webui/__init__.py` | 包标识 | 无公开入口 |
 
@@ -197,7 +198,7 @@
 | 文件或目录 | 用途 |
 | --- | --- |
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 服务、卷和端口定义 |
+| `compose.webui.yaml` | WebUI Docker Compose 服务、卷、端口与 HTTPS Cookie 环境设置 |
 | `Dockerfile.webui` | WebUI 镜像构建 |
 | `scripts/install_webui.sh` | WebUI 安装前检查函数；当前脚本无执行入口，目录创建尚未连接 Compose 数据卷 |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
@@ -231,7 +232,7 @@
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
 | `config/webui/` | `AGENTS.md`、`CLAUDE.md` |
 
-## 脚本和测试
+## 脚本
 
 | 文件 | 用途 |
 | --- | --- |
@@ -251,3 +252,5 @@
 | 2026-09-30 | WebUI 安装改用项目 Docker 静态包与独立 Compose 流程，移除安装询问，首次安装从受限口令文件初始化管理员；同步公开用法并新增无交互自检。 |
 | 2026-09-30 | 明确清单仅收录 Git 已跟踪且计划推送的仓库文件，移除未纳入版本控制的文件及目录条目，并同步根目录 Agent 规则。 |
 | 2026-09-30 | 安装脚本目录检查改为交互输入绝对路径并创建；按当前脚本状态修正入口及部署描述。 |
+| 2026-09-30 | 接入 FastAPI Users 用户管理和权限控制、首次部署随机 admin 口令与旧管理员迁移；补充 WebUI 容器用法、HTTPS Cookie 配置和本地认证自检。 |
+| 2026-09-30 | 将 `tests/` 设为仅供本地 Agent 自检的忽略目录，移除测试文件例外及清单条目，并同步仓库 Agent 规则。 |

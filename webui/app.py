@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from webui.api import create_router
 from webui.jobs import JobRunner
 from webui.storage import Database
+from webui.users import UserStore
 
 
 def create_app(database=None, runner=None):
@@ -16,22 +17,27 @@ def create_app(database=None, runner=None):
         os.environ.get("WEBUI_DATA_DIR", ""), os.environ.get("WEBUI_KEY_FILE", "")
     )
     jobs = runner or JobRunner(db)
+    users = UserStore(db)
 
     @asynccontextmanager
     async def lifespan(_app):
         db.initialize()
-        jobs.start()
+        await users.initialize()
         try:
-            yield
+            jobs.start()
+            try:
+                yield
+            finally:
+                jobs.stop()
         finally:
-            jobs.stop()
+            await users.close()
 
     app = FastAPI(
         title="AutoDeployKit", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
     app.state.database = db
     app.state.runner = jobs
-    app.include_router(create_router(db, jobs))
+    app.include_router(create_router(db, jobs, users))
     static = Path(__file__).parent / "static"
     app.mount("/assets", StaticFiles(directory=static), name="assets")
 

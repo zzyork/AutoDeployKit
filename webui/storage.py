@@ -20,7 +20,7 @@ from webui.security import hash_password, verify_password
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS admin_auth (id INTEGER PRIMARY KEY CHECK(id=1), password_hash TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, csrf_token TEXT NOT NULL, expires_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, csrf_token TEXT NOT NULL, expires_at REAL NOT NULL, user_id TEXT NOT NULL, session_version TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS ssh_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, public_key TEXT NOT NULL, private_cipher TEXT NOT NULL, created_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS hosts (
@@ -71,6 +71,10 @@ class Database:
         self.report_root.mkdir(exist_ok=True, mode=0o700)
         with self._connection() as connection:
             connection.executescript(SCHEMA)
+            if "user_id" not in {row["name"] for row in connection.execute("PRAGMA table_info(sessions)")}:
+                connection.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT")
+            if "session_version" not in {row["name"] for row in connection.execute("PRAGMA table_info(sessions)")}:
+                connection.execute("ALTER TABLE sessions ADD COLUMN session_version TEXT")
             row = connection.execute("SELECT value FROM settings WHERE key='key_check'").fetchone()
             if row is None:
                 if previous_database:
@@ -115,13 +119,17 @@ class Database:
         with self._connection() as connection:
             return connection.execute("SELECT 1 FROM admin_auth WHERE id=1").fetchone() is not None
 
-    def create_session(self):
+    def clear_legacy_admin(self):
+        with self._connection() as connection:
+            connection.execute("DELETE FROM admin_auth WHERE id=1")
+
+    def create_session(self, user_id, session_version):
         token = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
         with self._connection() as connection:
             connection.execute(
-                "INSERT INTO sessions VALUES (?,?,?)",
-                (hashlib.sha256(token.encode()).hexdigest(), csrf, time.time() + 43200),
+                "INSERT INTO sessions (token_hash,csrf_token,expires_at,user_id,session_version) VALUES (?,?,?,?,?)",
+                (hashlib.sha256(token.encode()).hexdigest(), csrf, time.time() + 43200, str(user_id), session_version),
             )
         return token, csrf
 
@@ -130,10 +138,19 @@ class Database:
             return None
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT csrf_token FROM sessions WHERE token_hash=? AND expires_at>?",
+                "SELECT s.csrf_token, u.id, u.username, u.is_superuser "
+                "FROM sessions s JOIN user u ON u.id=s.user_id AND u.is_active=1 AND u.session_version=s.session_version "
+                "WHERE s.token_hash=? AND s.expires_at>?",
                 (hashlib.sha256(token.encode()).hexdigest(), time.time()),
             ).fetchone()
-        return row["csrf_token"] if row else None
+        return {
+            "csrf_token": row["csrf_token"], "id": row["id"],
+            "username": row["username"], "is_admin": bool(row["is_superuser"]),
+        } if row else None
+
+    def revoke_user_sessions(self, user_id):
+        with self._connection() as connection:
+            connection.execute("DELETE FROM sessions WHERE user_id=?", (str(user_id),))
 
     def end_session(self, token):
         if token:
@@ -425,15 +442,6 @@ class Database:
                 else:
                     raise ValueError("Jump host has no credentials")
         return result
-
-    def change_admin_password(self, old_password, new_password):
-        if not self.verify_admin(old_password):
-            raise ValueError("Invalid administrator password")
-        with self._connection() as connection:
-            connection.execute(
-                "UPDATE admin_auth SET password_hash=? WHERE id=1", (hash_password(new_password),)
-            )
-            connection.execute("DELETE FROM sessions")
 
     def set_model_settings(self, base_url, model, api_key=None):
         parsed = urlsplit(base_url)
