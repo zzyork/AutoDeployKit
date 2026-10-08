@@ -1,31 +1,34 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Update this version before preparing each release; the release command embeds its archive hash.
-WEBUI_VERSION="0.1.1"
-WEBUI_ARCHIVE_SHA256="__ARCHIVE_SHA256__"
+# Update this version before preparing each release; the release command embeds the image digest and Compose hash.
+WEBUI_VERSION="0.1.2"
+WEBUI_IMAGE_DIGEST="__IMAGE_DIGEST__"
+WEBUI_COMPOSE_SHA256="__COMPOSE_SHA256__"
 PROJECT="autodeploykit"
-ARCHIVE="autodeploykit-webui.tar.gz"
+IMAGE="ghcr.io/zzyork/autodeploykit-webui"
+COMPOSE_FILE="compose.webui.yaml"
 DEFAULT_DOWNLOAD_BASE="https://github.com/zzyork/AutoDeployKit/releases/download"
 
 fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
 
 prepare_release() {
-    local root output hash paths
+    local root output hash digest
     root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-    paths=(.dockerignore Dockerfile.webui compose.webui.yaml pyproject.toml README.md cli.py config/webui middleware_ops monitor_ops server_check server_ops software_ops utils webui)
-    [[ -z "$(git -C "$root" status --porcelain -- "${paths[@]}" scripts/install_webui.sh)" ]] || fail '请先提交发布涉及的源码，再制作版本包。'
+    docker buildx build --platform linux/amd64 --push -t "$IMAGE:v$WEBUI_VERSION" -f "$root/Dockerfile.webui" "$root"
+    digest="$(docker buildx imagetools inspect "$IMAGE:v$WEBUI_VERSION" --format '{{index .Manifest "digest"}}')"
     output="$root/dist/v${WEBUI_VERSION}"
     mkdir -p -- "$output"
-    git -C "$root" archive --format=tar --prefix="autodeploykit-webui-v${WEBUI_VERSION}/" HEAD -- "${paths[@]}" | gzip -n > "$output/$ARCHIVE"
-    hash="$(sha256sum "$output/$ARCHIVE")"
+    cp -- "$root/$COMPOSE_FILE" "$output/$COMPOSE_FILE"
+    hash="$(sha256sum "$output/$COMPOSE_FILE")"
     hash="${hash%% *}"
-    sed "s/__ARCHIVE_SHA256__/$hash/g" "$root/scripts/install_webui.sh" | tr -d '\r' > "$output/install_webui.sh"
+    sed -e "s/__IMAGE_DIGEST__/$digest/g" -e "s/__COMPOSE_SHA256__/$hash/g" "$root/scripts/install_webui.sh" | tr -d '\r' > "$output/install_webui.sh"
     chmod 755 "$output/install_webui.sh"
-    say "发布文件：$output/$ARCHIVE"
+    say "发布镜像：$IMAGE@$digest"
+    say "部署文件：$output/$COMPOSE_FILE"
     say "发布脚本：$output/install_webui.sh"
-    say "SHA-256：$hash"
+    say "Compose SHA-256：$hash"
 }
 
 if [[ "${1:-}" == "--prepare-release" ]]; then
@@ -33,11 +36,11 @@ if [[ "${1:-}" == "--prepare-release" ]]; then
     exit
 fi
 [[ $# -eq 0 ]] || fail '用法：bash install_webui.sh'
-[[ "$WEBUI_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail '该文件是源码模板；请使用发布版本的安装脚本。'
+[[ "$WEBUI_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ && "$WEBUI_COMPOSE_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail '该文件是源码模板；请使用发布版本的安装脚本。'
 [[ -t 0 && -t 1 ]] || fail '安装及管理员口令初始化必须在交互终端运行。'
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || fail '首版仅支持 Linux x86_64。'
 [[ $EUID -eq 0 ]] || fail '请以 root 身份运行安装脚本。'
-for tool in tar sha256sum mktemp; do command -v "$tool" >/dev/null || fail "系统缺少基础工具 $tool"; done
+for tool in sha256sum mktemp; do command -v "$tool" >/dev/null || fail "系统缺少基础工具 $tool"; done
 
 confirm() {
     local answer
@@ -47,7 +50,7 @@ confirm() {
 
 check_curl() {
     command -v curl >/dev/null && return
-    confirm 'curl 未安装，是否从系统软件源安装？' || fail '需要 curl 下载发布包。'
+    confirm 'curl 未安装，是否从系统软件源安装？' || fail '需要 curl 下载部署文件。'
     if command -v apt-get >/dev/null; then
         apt-get update
         apt-get install -y curl
@@ -145,19 +148,19 @@ download_release() {
     [[ "$base" =~ ^https://[a-zA-Z0-9.-]+(:[0-9]+)?(/[a-zA-Z0-9._/-]*)?$ ]] || fail '下载源必须为不含凭据和参数的 HTTPS 基础地址。'
     base="${base%/}"
     STAGE="$(mktemp -d "$INSTALL_DIR/.install.XXXXXX")"
-    curl --proto '=https' --tlsv1.2 -fL --retry 3 --output "$STAGE/$ARCHIVE" "$base/v${WEBUI_VERSION}/$ARCHIVE"
-    printf '%s  %s\n' "$WEBUI_ARCHIVE_SHA256" "$STAGE/$ARCHIVE" | sha256sum -c - >/dev/null || fail '版本包 SHA-256 校验失败。'
-    tar -tzf "$STAGE/$ARCHIVE" | while IFS= read -r entry; do
-        [[ "$entry" == "autodeploykit-webui-v${WEBUI_VERSION}/"* && "$entry" != *'/../'* && "$entry" != *'/./'* ]] || exit 1
-    done || fail '版本包包含非法路径。'
-    tar --no-same-owner --no-same-permissions -xzf "$STAGE/$ARCHIVE" -C "$STAGE"
+    curl --proto '=https' --tlsv1.2 -fL --retry 3 --output "$STAGE/$COMPOSE_FILE" "$base/v${WEBUI_VERSION}/$COMPOSE_FILE"
+    printf '%s  %s\n' "$WEBUI_COMPOSE_SHA256" "$STAGE/$COMPOSE_FILE" | sha256sum -c - >/dev/null || fail '部署文件 SHA-256 校验失败。'
     RELEASE_DIR="$INSTALL_DIR/releases/v${WEBUI_VERSION}"
     if [[ -e "$RELEASE_DIR" ]]; then
-        [[ -f "$RELEASE_DIR/.archive-sha256" && "$(< "$RELEASE_DIR/.archive-sha256")" == "$WEBUI_ARCHIVE_SHA256" ]] || fail '已有同版本目录与发布物不匹配，请人工检查。'
+        [[ -f "$RELEASE_DIR/$COMPOSE_FILE" && ! -L "$RELEASE_DIR/$COMPOSE_FILE" ]] || fail '已有同版本目录的部署文件缺失或无效。'
+        printf '%s  %s\n' "$WEBUI_COMPOSE_SHA256" "$RELEASE_DIR/$COMPOSE_FILE" | sha256sum -c - >/dev/null || fail '已有同版本部署文件与发布物不匹配，请人工检查。'
+        if [[ -e "$RELEASE_DIR/.image-ref" ]]; then
+            [[ -f "$RELEASE_DIR/.image-ref" && ! -L "$RELEASE_DIR/.image-ref" && "$(< "$RELEASE_DIR/.image-ref")" == "$IMAGE@$WEBUI_IMAGE_DIGEST" ]] || fail '已有同版本镜像与发布物不匹配，请人工检查。'
+        fi
     else
-        mkdir -p -- "$INSTALL_DIR/releases"
-        mv -- "$STAGE/autodeploykit-webui-v${WEBUI_VERSION}" "$RELEASE_DIR"
-        printf '%s\n' "$WEBUI_ARCHIVE_SHA256" > "$RELEASE_DIR/.archive-sha256"
+        mkdir -p -- "$INSTALL_DIR/releases" "$STAGE/release"
+        mv -- "$STAGE/$COMPOSE_FILE" "$STAGE/release/$COMPOSE_FILE"
+        mv -- "$STAGE/release" "$RELEASE_DIR"
     fi
 }
 
@@ -184,9 +187,14 @@ backup_upgrade() {
     say "正在备份数据库、报告和密钥至 $backup_dir"
     docker run --rm --user 0 \
         -v "${PROJECT}_webui_data:/data:ro" -v "${PROJECT}_webui_key:/key:ro" \
-        -v "$backup_dir:/backup" "autodeploykit-webui:$WEBUI_VERSION" \
+        -v "$backup_dir:/backup" "$WEBUI_IMAGE" \
         autodeploykit-webui-init --backup-dir /backup --data-dir /data --key-file /key/master.key || return 1
     say "备份完成：$backup_dir"
+}
+
+restore_old() {
+    WEBUI_IMAGE="${OLD_IMAGE:-$WEBUI_IMAGE}" WEBUI_IMAGE_TAG="$OLD_VERSION" \
+        compose_at "$INSTALL_DIR/releases/v$OLD_VERSION" up -d --no-deps webui || true
 }
 
 cleanup() { [[ -z "${STAGE:-}" ]] || rm -rf -- "$STAGE"; }
@@ -200,12 +208,18 @@ download_release
 check_docker
 check_space
 collect_addresses
+WEBUI_IMAGE="$IMAGE@$WEBUI_IMAGE_DIGEST"
+export WEBUI_IMAGE
 STATE="$INSTALL_DIR/installation.state"
 if [[ -f "$STATE" ]]; then
     IFS='|' read -r OLD_VERSION OLD_IP OLD_PORT < "$STATE"
     [[ "$OLD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$OLD_PORT" =~ ^[0-9]{1,5}$ ]] && valid_ip "$OLD_IP" || fail '安装状态无效，请人工检查。'
     [[ "$OLD_PORT" == "$WEBUI_PORT" ]] || fail '升级不能同时改变端口；请先保留原设置。'
     [[ -f "$INSTALL_DIR/releases/v$OLD_VERSION/compose.webui.yaml" ]] || fail '原版本部署文件缺失。'
+    if [[ -f "$INSTALL_DIR/releases/v$OLD_VERSION/.image-ref" ]]; then
+        OLD_IMAGE="$(< "$INSTALL_DIR/releases/v$OLD_VERSION/.image-ref")"
+        [[ "$OLD_IMAGE" =~ ^ghcr\.io/zzyork/autodeploykit-webui@sha256:[0-9a-f]{64}$ ]] || fail '原版本镜像引用无效，请人工检查。'
+    fi
     volume_exists webui_data && volume_exists webui_key || fail '已有安装缺少数据卷或密钥卷，拒绝初始化。'
     if [[ "$OLD_VERSION" == "$WEBUI_VERSION" ]]; then
         SAME_VERSION=1
@@ -223,22 +237,20 @@ else
     confirm '将公开监听 HTTPS 端口，且不限制来源 IP；是否继续？' || exit 0
 fi
 
-WEBUI_IMAGE_TAG="$WEBUI_VERSION"
-export WEBUI_IMAGE_TAG
+docker pull "$WEBUI_IMAGE" || fail '无法拉取发布镜像；旧服务未被停止。'
 if [[ "${SAME_VERSION:-0}" == 1 ]]; then
     compose_at "$RELEASE_DIR" --profile setup run --rm --no-deps init --tls-only
     compose_at "$RELEASE_DIR" up -d --force-recreate --no-deps webui
 else
-    compose_at "$RELEASE_DIR" build webui
     if [[ -f "$STATE" ]]; then
         WEBUI_IMAGE_TAG="$OLD_VERSION" compose_at "$INSTALL_DIR/releases/v$OLD_VERSION" stop webui
         if ! backup_upgrade; then
-            WEBUI_IMAGE_TAG="$OLD_VERSION" compose_at "$INSTALL_DIR/releases/v$OLD_VERSION" up -d --no-deps webui || true
+            restore_old
             fail '备份失败，已尝试恢复旧服务；未执行升级。'
         fi
         say '备份已保存。若新版本启动失败，不会自动切回可能不兼容的旧数据库。'
         if ! compose_at "$RELEASE_DIR" --profile setup run --rm --no-deps init --tls-only; then
-            WEBUI_IMAGE_TAG="$OLD_VERSION" compose_at "$INSTALL_DIR/releases/v$OLD_VERSION" up -d --no-deps webui || true
+            restore_old
             fail '证书检查失败，已尝试恢复旧服务；未执行升级。'
         fi
     else
@@ -266,6 +278,7 @@ for ((attempt=0; attempt<20; attempt++)); do
 done
 [[ $ready -eq 1 ]] || fail 'HTTPS 启动检查失败，请检查容器日志；数据卷和备份均已保留。'
 fingerprint="$(docker exec "$container" autodeploykit-webui-init --tls-fingerprint)"
+printf '%s\n' "$WEBUI_IMAGE" > "$RELEASE_DIR/.image-ref"
 printf '%s|%s|%s\n' "$WEBUI_VERSION" "$WEBUI_CHECK_IP" "$WEBUI_PORT" > "$STATE.tmp"
 chmod 600 "$STATE.tmp"
 mv -- "$STATE.tmp" "$STATE"

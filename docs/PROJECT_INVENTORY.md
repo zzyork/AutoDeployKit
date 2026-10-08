@@ -40,7 +40,7 @@
 | `.dockerignore` | WebUI 镜像构建上下文排除规则 |
 | `cli.py` | CLI 主入口，详见“入口索引” |
 | `pyproject.toml` | 项目元数据和 Python 工具配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 服务、卷、对外 HTTPS 端口配置 |
+| `compose.webui.yaml` | WebUI Docker Compose 镜像服务、卷、对外 HTTPS 端口配置 |
 | `Dockerfile.webui` | WebUI 镜像构建和 Uvicorn HTTPS 启动定义 |
 | `README.md`、`README.en.md` | 中文和英文公开使用说明 |
 | `hosts.example` | CLI 主机清单格式示例；不含真实资产 |
@@ -58,7 +58,7 @@
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
 | `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；容器由 Compose 使用自签名证书通过 HTTPS 启动 |
 | `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化管理员、为所有当前网卡 IPv4 生成自签名证书；支持证书更新和升级备份，已有管理员数据不覆盖 |
-| `scripts/install_webui.sh` | `bash scripts/install_webui.sh --prepare-release`；已发布单文件脚本交互安装 | 制作固定版本包与嵌入校验值的安装脚本；检查 Docker、下载校验、首次初始化、HTTPS 启动及升级备份 |
+| `scripts/install_webui.sh` | `bash scripts/install_webui.sh --prepare-release`；已发布单文件脚本交互安装 | 构建推送 GHCR 镜像并生成固定 digest/Compose 校验值的安装脚本；安装时拉取镜像、首次初始化、HTTPS 启动及升级备份 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -200,9 +200,9 @@
 | 文件或目录 | 用途 |
 | --- | --- |
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 服务、独立持久卷、HTTPS 对外端口与安全 Cookie |
+| `compose.webui.yaml` | WebUI Docker Compose 镜像服务、独立持久卷、HTTPS 对外端口与安全 Cookie |
 | `Dockerfile.webui` | WebUI 镜像构建与直接 HTTPS 启动 |
-| `scripts/install_webui.sh` | 固定版本发布包与单文件安装脚本制作；下载校验、Docker 检查、交互初始化、升级备份与 HTTPS 验证 |
+| `scripts/install_webui.sh` | GHCR 镜像构建推送与固定 digest 安装脚本制作；Compose 下载校验、Docker 拉取、交互初始化、升级备份与 HTTPS 验证 |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
 | `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
@@ -214,7 +214,7 @@
 | `config/redis/` | Redis systemd service 模板 |
 | `config/supervisor/` | Supervisor 配置、service 和程序 ini 模板 |
 | `README.md` | 中文项目介绍、功能、环境、安装和使用说明 |
-| `docs/WEBUI_RELEASE.md` | 发布机上的 Git 检查、版本制品生成、GitHub Release 发布与升级验收步骤 |
+| `docs/WEBUI_RELEASE.md` | 发布机上的 Git 检查、GHCR 镜像推送、GitHub Release 发布与升级验收步骤 |
 | `README.en.md` | 英文项目说明 |
 | `LICENSE` | MIT 许可证 |
 | `docs/plans/2026-09-28-webui-v1-implementation.md` | WebUI v1 实施计划 |
@@ -261,3 +261,4 @@
 | 2026-10-08 | 新增 WebUI 发布与更新手册，记录 Linux 发布机命令、推送前差异检查和发布后的验证步骤；公开用法增加手册入口。 |
 | 2026-10-08 | WebUI 发布物改为每版本独立目录存放脚本和源码包，两个附件使用固定文件名；同步安装脚本、公开用法和发布手册。 |
 | 2026-10-08 | 修正 WebUI 安装时单 IP 选择：自动采集当前网卡 IPv4 并签发多 IP 证书，兼容旧安装状态、同步版本和安装说明。 |
+| 2026-10-08 | WebUI v0.1.2 发布改为直接从工作区构建推送 GHCR 镜像、以 digest 固定安装版本；安装改为校验 Compose 附件并拉取镜像启动，兼容旧部署升级恢复；同步发布与安装说明。 |

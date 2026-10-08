@@ -1,9 +1,6 @@
 services:
   webui:
-    image: autodeploykit-webui:${WEBUI_IMAGE_TAG:-local}
-    build:
-      context: .
-      dockerfile: Dockerfile.webui
+    image: ${WEBUI_IMAGE:-autodeploykit-webui:local}
     environment:
       WEBUI_SECURE_COOKIES: "1"
     restart: unless-stopped
@@ -21,7 +18,7 @@ services:
       - ALL
 
   init:
-    image: autodeploykit-webui:${WEBUI_IMAGE_TAG:-local}
+    image: ${WEBUI_IMAGE:-autodeploykit-webui:local}
     profiles: [setup]
     read_only: true
     tmpfs:
