@@ -65,43 +65,14 @@ check_curl() {
 }
 
 check_docker() {
-    if ! command -v docker >/dev/null; then
-        confirm 'Docker 未安装，是否从系统软件源安装并启动 Docker？' || fail '需要 Docker Engine。'
-        if command -v apt-get >/dev/null; then
-            apt-get update
-            apt-get install -y docker.io
-        elif command -v dnf >/dev/null; then
-            dnf install -y docker
-        else
-            fail '仅支持从 APT/DNF 软件源安装 Docker，请先准备受支持的系统。'
-        fi
-        systemctl enable --now docker
-    fi
-    if ! docker info >/dev/null 2>&1; then
-        confirm 'Docker 守护进程不可用，是否尝试启动并设置开机启动？' || fail '需要运行中的 Docker 守护进程。'
-        systemctl enable --now docker
-        docker info >/dev/null || fail '无法访问 Docker 守护进程。'
-    fi
+    command -v docker >/dev/null || fail '未检测到 Docker Engine；请先自行安装并启动 Docker。'
+    docker info >/dev/null 2>&1 || fail 'Docker 守护进程不可用；请先启动并确保当前用户可访问。'
     if docker compose version >/dev/null 2>&1; then
         COMPOSE=(docker compose)
     elif command -v docker-compose >/dev/null && docker-compose version --short 2>/dev/null | grep -q '^2\.'; then
         COMPOSE=(docker-compose)
     else
-        confirm 'Compose v2 未安装，是否从系统软件源安装？' || fail '需要 Compose v2。'
-        if command -v apt-get >/dev/null; then
-            apt-get update
-            if apt-cache show docker-compose-plugin >/dev/null 2>&1; then
-                apt-get install -y docker-compose-plugin
-            else
-                apt-get install -y docker-compose-v2
-            fi
-        elif command -v dnf >/dev/null; then
-            dnf install -y docker-compose-plugin
-        else
-            fail '找不到支持的 Compose v2 软件源。'
-        fi
-        docker compose version >/dev/null || fail 'Compose v2 安装后仍不可用。'
-        COMPOSE=(docker compose)
+        fail '未检测到 Compose v2；请先自行安装 Docker Compose v2。'
     fi
 }
 
@@ -202,12 +173,12 @@ restore_old() {
 cleanup() { [[ -z "${STAGE:-}" ]] || rm -rf -- "$STAGE"; }
 trap cleanup EXIT
 
+check_docker
 read_settings
 [[ -d "$INSTALL_DIR" || ! -e "$INSTALL_DIR" ]] || fail '安装路径不是目录。'
 mkdir -p -- "$INSTALL_DIR"
 check_curl
 download_release
-check_docker
 check_space
 collect_addresses
 WEBUI_IMAGE="$IMAGE@$WEBUI_IMAGE_DIGEST"

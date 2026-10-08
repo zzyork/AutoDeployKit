@@ -202,7 +202,7 @@
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
 | `compose.webui.yaml` | WebUI Docker Compose 镜像服务、独立持久卷、HTTPS 对外端口与安全 Cookie |
 | `Dockerfile.webui` | WebUI 镜像构建与直接 HTTPS 启动 |
-| `scripts/install_webui.sh` | GHCR 镜像构建推送与固定 digest 安装脚本制作；Compose 下载校验、Docker 拉取、交互初始化、升级备份与 HTTPS 验证 |
+| `scripts/install_webui.sh` | GHCR 镜像构建推送与固定 digest 安装脚本制作；安装时检查已有 Docker Engine/Compose v2、校验 Compose 下载、拉取镜像、交互初始化、升级备份与 HTTPS 验证；不安装或启动 Docker |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
 | `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
@@ -263,3 +263,4 @@
 | 2026-10-08 | 修正 WebUI 安装时单 IP 选择：自动采集当前网卡 IPv4 并签发多 IP 证书，兼容旧安装状态、同步版本和安装说明。 |
 | 2026-10-08 | WebUI v0.1.2 发布改为直接从工作区构建推送 GHCR 镜像、以 digest 固定安装版本；安装改为校验 Compose 附件并拉取镜像启动，兼容旧部署升级恢复；同步发布与安装说明。 |
 | 2026-10-08 | WebUI 发布机改用 Docker 原生命令构建、推送并读取镜像 digest，不再依赖 Buildx；同步发布机环境说明。 |
+| 2026-10-08 | WebUI 安装脚本移除 Docker Engine、Compose v2 自动安装及 Docker 自动启动，改为提前检查已有运行环境；同步安装和发布说明。 |
