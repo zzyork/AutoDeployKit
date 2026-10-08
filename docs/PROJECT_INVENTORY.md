@@ -24,8 +24,8 @@
 | `utils/` | Python 支撑模块 | SSH、文件传输、菜单、输出、发行版和软件检测 |
 | `webui/` | Python 模块和静态资源 | FastAPI WebUI、资产、认证、任务、巡检和报告接口 |
 | `config/` | 配置模板 | Linux、Docker、MySQL、Nginx、Prometheus 等服务模板 |
-| `scripts/` | 运维脚本 | WebUI 安装、离线巡检、漏洞检查和 pip 引导 |
-| `docs/` | 项目文档 | 项目清单、WebUI 发布维护指令及设计记录 |
+| `scripts/` | 运维脚本 | 离线巡检、漏洞检查和 pip 引导 |
+| `docs/` | 项目文档 | 项目清单及设计记录 |
 | `docs/plans/` | 设计和实施文档 | WebUI 架构与版本实施记录 |
 
 ## 根目录文件
@@ -35,13 +35,9 @@
 | `AGENTS.md` | 源码仓库维护、Agent 操作和远程操作约束 |
 | `CLAUDE.md` | 源码仓库的 Claude/Agent 操作约束，与 `AGENTS.md` 保持同步 |
 | `docs/PROJECT_INVENTORY.md` | 本清单；目录、文件、功能、模块和入口的权威导航 |
-| `docs/WEBUI_RELEASE.md` | WebUI 发布、版本更新与发布后验收命令 |
 | `.gitignore` | 忽略缓存、环境、凭据、运行时报告和构建产物 |
-| `.dockerignore` | WebUI 镜像构建上下文排除规则 |
 | `cli.py` | CLI 主入口，详见“入口索引” |
 | `pyproject.toml` | 项目元数据和 Python 工具配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 镜像服务、卷、对外 HTTPS 端口配置 |
-| `Dockerfile.webui` | WebUI 镜像构建和 Uvicorn HTTPS 启动定义 |
 | `README.md`、`README.en.md` | 中文和英文公开使用说明 |
 | `hosts.example` | CLI 主机清单格式示例；不含真实资产 |
 | `LICENSE` | MIT 许可证 |
@@ -56,9 +52,7 @@
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
-| `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；容器由 Compose 使用自签名证书通过 HTTPS 启动 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化管理员、为所有当前网卡 IPv4 生成自签名证书；支持证书更新和升级备份，已有管理员数据不覆盖 |
-| `scripts/install_webui.sh` | `bash scripts/install_webui.sh --prepare-release`；已发布单文件脚本交互安装 | 构建推送 GHCR 镜像并生成固定 digest/Compose 校验值的安装脚本；安装时拉取镜像、首次初始化、HTTPS 启动及升级备份 |
+| `webui.app:create_app` | FastAPI 应用工厂 | 创建 WebUI 应用；仓库不提供自动化部署和首次初始化流程 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -93,7 +87,8 @@
 | WebUI 多用户、会话和 CSRF | `webui/users.py`、`webui/api.py`、`webui/storage.py` | FastAPI Users 管理账号；资产、会话、任务及报告共享，管理员与普通账号权限分离，支持旧管理员口令迁移 |
 | WebUI 模型工具调用和风险摘要 | `webui/agent.py` | 仅开放 `inspect_servers`、`latest_inspection` |
 | WebUI 任务队列和 SSE 事件 | `webui/jobs.py`、`webui/api.py` | 已接入；单后台线程处理任务 |
-| WebUI 报告查询 | `webui/storage.py`、`webui/api.py` | 已接入；报告位于 WebUI 数据卷 |
+| WebUI 报告查询 | `webui/storage.py`、`webui/api.py` | 已接入；报告位于 WebUI 数据目录 |
+| WebUI 部署 | `webui/app.py` | 仅保留应用代码；自动安装、初始化、容器启动和升级流程已移除 |
 | Nginx 漏洞检查和报告 | `scripts/check_nginx_cve_2026_42945.py`、`scripts/generate_nginx_vulnerability_report.py` | 独立脚本，不属于 CLI 菜单 |
 
 ## CLI 模块和文件
@@ -189,7 +184,6 @@
 | `webui/assets.py` | WebUI 资产字段校验 | `validate_host` |
 | `webui/jobs.py` | 单后台线程任务队列、远端巡检和 SSE 事件 | `JobRunner`；`enqueue`、`events`、`_process`、`_inspect_host` |
 | `webui/agent.py` | 模型请求、工具白名单、参数校验和安全摘要 | `TOOLS`、`decide`、`summarize` |
-| `webui/bootstrap.py` | 首次交互生成管理员口令、多 IP 自签名证书及只读数据备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
 | `webui/static/index.html` | WebUI 页面结构 | 单页入口 |
 | `webui/static/app.js` | 多账号登录、账号管理、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
 | `webui/static/app.css` | WebUI 样式 | 页面样式 |
@@ -200,11 +194,6 @@
 | 文件或目录 | 用途 |
 | --- | --- |
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 镜像服务、独立持久卷、HTTPS 对外端口与安全 Cookie |
-| `Dockerfile.webui` | WebUI 镜像构建与直接 HTTPS 启动 |
-| `scripts/install_webui.sh` | GHCR 镜像构建推送与固定 digest 安装脚本制作；安装时检查已有 Docker Engine/Compose v2、校验 Compose 下载、拉取镜像、交互初始化、升级备份与 HTTPS 验证；不安装或启动 Docker |
-| `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
-| `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
 | `config/linux/` | vimrc、sysctl 和软件源模板 |
 | `config/minio/` | Minio 配置和 systemd service 模板 |
@@ -214,7 +203,6 @@
 | `config/redis/` | Redis systemd service 模板 |
 | `config/supervisor/` | Supervisor 配置、service 和程序 ini 模板 |
 | `README.md` | 中文项目介绍、功能、环境、安装和使用说明 |
-| `docs/WEBUI_RELEASE.md` | 发布机上的 Git 检查、GHCR 镜像推送、GitHub Release 发布与升级验收步骤 |
 | `README.en.md` | 英文项目说明 |
 | `LICENSE` | MIT 许可证 |
 | `docs/plans/2026-09-28-webui-v1-implementation.md` | WebUI v1 实施计划 |
@@ -233,7 +221,6 @@
 | `config/prometheus/` | `mysqld-exporter.service`、`mysqld_exporter.conf`、`node-exporter.service`、`prometheus.service`、`prometheus.yml`、`redis-exporter.service` |
 | `config/redis/` | `redis.service` |
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
-| `config/webui/` | `AGENTS.md`、`CLAUDE.md` |
 
 ## 脚本
 
@@ -264,3 +251,4 @@
 | 2026-10-08 | WebUI v0.1.2 发布改为直接从工作区构建推送 GHCR 镜像、以 digest 固定安装版本；安装改为校验 Compose 附件并拉取镜像启动，兼容旧部署升级恢复；同步发布与安装说明。 |
 | 2026-10-08 | WebUI 发布机改用 Docker 原生命令构建、推送并读取镜像 digest，不再依赖 Buildx；同步发布机环境说明。 |
 | 2026-10-08 | WebUI 安装脚本移除 Docker Engine、Compose v2 自动安装及 Docker 自动启动，改为提前检查已有运行环境；同步安装和发布说明。 |
+| 2026-10-08 | 删除 WebUI 自动安装、初始化、容器构建/启动与发布流程及专用模板；保留应用代码，清理失效入口与公开用法。 |

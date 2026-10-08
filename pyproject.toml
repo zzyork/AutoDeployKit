@@ -15,7 +15,6 @@ dependencies = [
 
 [project.scripts]
 autodeploykit = "cli:main"
-autodeploykit-webui-init = "webui.bootstrap:main"
 
 [project.optional-dependencies]
 web = [
@@ -48,8 +47,6 @@ packages = [
 
 [tool.hatch.build.targets.wheel.force-include]
 "cli.py" = "cli.py"
-"config/webui/AGENTS.md" = "webui/install/AGENTS.md"
-"config/webui/CLAUDE.md" = "webui/install/CLAUDE.md"
 
 [tool.ruff]
 # Public Python standards enforced here:
@@ -113,7 +110,6 @@ known-first-party = [
 
 [tool.ruff.lint.per-file-ignores]
 "webui/api.py" = ["B008"]  # FastAPI evaluates Depends when registering routes.
-"webui/bootstrap.py" = ["T20"]  # Local interactive command reports initialization status.
 
 [tool.ruff.lint.pydocstyle]
 # PEP 257 docstring convention. D rules are not selected yet because the
