@@ -16,8 +16,10 @@ say() { printf '%s\n' "$*"; }
 prepare_release() {
     local root output hash digest
     root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-    docker buildx build --platform linux/amd64 --push -t "$IMAGE:v$WEBUI_VERSION" -f "$root/Dockerfile.webui" "$root"
-    digest="$(docker buildx imagetools inspect "$IMAGE:v$WEBUI_VERSION" --format '{{index .Manifest "digest"}}')"
+    docker build -t "$IMAGE:v$WEBUI_VERSION" -f "$root/Dockerfile.webui" "$root"
+    docker push "$IMAGE:v$WEBUI_VERSION"
+    digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:v$WEBUI_VERSION")"
+    digest="${digest##*@}"
     output="$root/dist/v${WEBUI_VERSION}"
     mkdir -p -- "$output"
     cp -- "$root/$COMPOSE_FILE" "$output/$COMPOSE_FILE"

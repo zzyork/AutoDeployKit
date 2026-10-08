@@ -17,7 +17,7 @@ git merge-base --is-ancestor github/master HEAD
 
 审阅将要推送的**全部**提交与差异，确认没有真实资产或秘密。`git status --short` 应为空；最后一条命令返回非零时，停止发布并处理分支分歧，不要强推。`github/master` 可能比 `origin/master` 落后多个提交，发布 Release 前需要先将计划公开的源码推到 GitHub。
 
-发布机需要 Docker Engine、Buildx 和 GHCR 推送权限（例如使用有 `write:packages` 权限的令牌执行 `docker login ghcr.io`）。安装机需要能从公开 GHCR 拉取镜像。当前 `Dockerfile.webui` 的基础镜像标签和 `pyproject.toml` 的 Python 依赖尚未锁定；发布镜像按 digest 固定，但重建不保证一致。正式发布前固定基础镜像摘要和依赖版本，并在 Linux Docker 环境验证首次安装、重复运行和升级。
+发布机需要 Linux `x86_64`、Docker Engine 和 GHCR 推送权限（例如使用有 `write:packages` 权限的令牌执行 `docker login ghcr.io`）。安装机需要能从公开 GHCR 拉取镜像。当前 `Dockerfile.webui` 的基础镜像标签和 `pyproject.toml` 的 Python 依赖尚未锁定；发布镜像按 digest 固定，但重建不保证一致。正式发布前固定基础镜像摘要和依赖版本，并在 Linux Docker 环境验证首次安装、重复运行和升级。
 
 ## 首次发布
 

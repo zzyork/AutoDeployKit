@@ -136,7 +136,7 @@ python cli.py server_check webservers
 
 部署主机须为 Linux `x86_64`，具备 root 权限、交互终端、`sha256sum`，可访问发布附件下载地址及公开 GHCR 镜像仓库，且安装目录与 Docker 数据目录各有至少 1 GiB 可用空间。如未安装 `curl`、Docker Engine / Compose v2，脚本会在确认后尝试从 APT/DNF 软件源安装；部署主机不构建镜像。
 
-每次发布时，维护者同步更新 `scripts/install_webui.sh` 顶部的 `WEBUI_VERSION` 和 `pyproject.toml` 的版本；在已登录 GHCR、具备 Docker Buildx 的 Linux 发布机运行：
+每次发布时，维护者同步更新 `scripts/install_webui.sh` 顶部的 `WEBUI_VERSION` 和 `pyproject.toml` 的版本；在已登录 GHCR、具备 Docker Engine 的 Linux `x86_64` 发布机运行：
 
 ```bash
 bash scripts/install_webui.sh --prepare-release
