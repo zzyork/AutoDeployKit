@@ -52,7 +52,7 @@
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
-| `webui.app:create_app` | FastAPI 应用工厂 | 创建 WebUI 应用；仓库不提供自动化部署和首次初始化流程 |
+| `webui.app:create_app` | FastAPI 应用工厂 | 创建 WebUI 应用；仓库不提供自动化部署流程 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -88,7 +88,7 @@
 | WebUI 模型工具调用和风险摘要 | `webui/agent.py` | 仅开放 `inspect_servers`、`latest_inspection` |
 | WebUI 任务队列和 SSE 事件 | `webui/jobs.py`、`webui/api.py` | 已接入；单后台线程处理任务 |
 | WebUI 报告查询 | `webui/storage.py`、`webui/api.py` | 已接入；报告位于 WebUI 数据目录 |
-| WebUI 部署 | `webui/app.py` | 仅保留应用代码；自动安装、初始化、容器启动和升级流程已移除 |
+| WebUI 部署 | `webui/app.py`、`webui/bootstrap.py` | 可手动初始化并运行应用；自动安装、容器启动和升级流程已移除 |
 | Nginx 漏洞检查和报告 | `scripts/check_nginx_cve_2026_42945.py`、`scripts/generate_nginx_vulnerability_report.py` | 独立脚本，不属于 CLI 菜单 |
 
 ## CLI 模块和文件
@@ -177,6 +177,7 @@
 | 文件 | 模块职责 | 关键符号/接口 |
 | --- | --- | --- |
 | `webui/app.py` | 创建 FastAPI 应用、生命周期、静态资源和安全响应头 | `create_app`、`GET /` |
+| `webui/bootstrap.py` | 本地创建加密密钥、管理员和自签名 TLS 证书，支持备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
 | `webui/api.py` | 请求模型、认证与权限依赖和 REST/SSE 路由 | `create_router`；账号管理与登录、主机、SSH key、设置、聊天、会话、任务、报告接口 |
 | `webui/storage.py` | SQLite schema、加密凭据、资产、绑定用户的会话、任务和报告 | `Database`；`initialize`、`create_session`、`get_session`、`revoke_user_sessions`、`add_host`、`resolve_hosts`、`create_job`、`report_path` |
 | `webui/users.py` | FastAPI Users 与 SQLite 用户适配、认证和旧管理员迁移 | `UserStore`、`UserManager`、`User`、`public_user` |
@@ -202,6 +203,7 @@
 | `config/prometheus/` | Prometheus、node、MySQL、Redis exporter 配置和 service 模板 |
 | `config/redis/` | Redis systemd service 模板 |
 | `config/supervisor/` | Supervisor 配置、service 和程序 ini 模板 |
+| `config/webui/` | 已安装 WebUI 的独立 Agent 操作规则模板 |
 | `README.md` | 中文项目介绍、功能、环境、安装和使用说明 |
 | `README.en.md` | 英文项目说明 |
 | `LICENSE` | MIT 许可证 |
@@ -221,6 +223,7 @@
 | `config/prometheus/` | `mysqld-exporter.service`、`mysqld_exporter.conf`、`node-exporter.service`、`prometheus.service`、`prometheus.yml`、`redis-exporter.service` |
 | `config/redis/` | `redis.service` |
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
+| `config/webui/` | `AGENTS.md`、`CLAUDE.md` |
 
 ## 脚本
 
@@ -252,3 +255,4 @@
 | 2026-10-08 | WebUI 发布机改用 Docker 原生命令构建、推送并读取镜像 digest，不再依赖 Buildx；同步发布机环境说明。 |
 | 2026-10-08 | WebUI 安装脚本移除 Docker Engine、Compose v2 自动安装及 Docker 自动启动，改为提前检查已有运行环境；同步安装和发布说明。 |
 | 2026-10-08 | 删除 WebUI 自动安装、初始化、容器构建/启动与发布流程及专用模板；保留应用代码，清理失效入口与公开用法。 |
+| 2026-10-08 | 核对 WebUI 启动入口时补录已跟踪的本地初始化脚本和安装目录规则模板，澄清手动初始化仍可使用。 |
