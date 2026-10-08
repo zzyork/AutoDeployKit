@@ -38,8 +38,8 @@
 | `.dockerignore` | WebUI 镜像构建上下文排除规则 |
 | `cli.py` | CLI 主入口，详见“入口索引” |
 | `pyproject.toml` | 项目元数据和 Python 工具配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 服务、卷和 HTTPS Cookie 配置 |
-| `Dockerfile.webui` | WebUI 镜像构建定义 |
+| `compose.webui.yaml` | WebUI Docker Compose 服务、卷、对外 HTTPS 端口配置 |
+| `Dockerfile.webui` | WebUI 镜像构建和 Uvicorn HTTPS 启动定义 |
 | `README.md`、`README.en.md` | 中文和英文公开使用说明 |
 | `hosts.example` | CLI 主机清单格式示例；不含真实资产 |
 | `LICENSE` | MIT 许可证 |
@@ -54,9 +54,9 @@
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
-| `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；Compose 定义容器服务，当前安装脚本尚未调用 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化随机管理员口令并只显示一次；已有管理员数据不覆盖 |
-| `scripts/install_webui.sh` | 当前仅定义 `check_docker`、`check_docker_compose`、`check_data_directory`，无执行入口 | 目录位置由 `check_data_directory` 交互输入；部署流程尚未接入 |
+| `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；容器由 Compose 使用自签名证书通过 HTTPS 启动 |
+| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化管理员、生成 IP 自签名证书；支持证书检查和升级备份，已有管理员数据不覆盖 |
+| `scripts/install_webui.sh` | `bash scripts/install_webui.sh --prepare-release`；已发布单文件脚本交互安装 | 制作固定版本包与嵌入校验值的安装脚本；检查 Docker、下载校验、首次初始化、HTTPS 启动及升级备份 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -187,7 +187,7 @@
 | `webui/assets.py` | WebUI 资产字段校验 | `validate_host` |
 | `webui/jobs.py` | 单后台线程任务队列、远端巡检和 SSE 事件 | `JobRunner`；`enqueue`、`events`、`_process`、`_inspect_host` |
 | `webui/agent.py` | 模型请求、工具白名单、参数校验和安全摘要 | `TOOLS`、`decide`、`summarize` |
-| `webui/bootstrap.py` | 本地/容器初始化命令，首次交互生成并显示随机 admin 口令 | `main`、`initialize_users` |
+| `webui/bootstrap.py` | 首次交互生成管理员口令、IP 自签名证书及只读数据备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
 | `webui/static/index.html` | WebUI 页面结构 | 单页入口 |
 | `webui/static/app.js` | 多账号登录、账号管理、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
 | `webui/static/app.css` | WebUI 样式 | 页面样式 |
@@ -198,9 +198,9 @@
 | 文件或目录 | 用途 |
 | --- | --- |
 | `pyproject.toml` | 项目元数据、依赖、命令入口、打包、ruff 和 mypy 配置 |
-| `compose.webui.yaml` | WebUI Docker Compose 服务、卷、端口与 HTTPS Cookie 环境设置 |
-| `Dockerfile.webui` | WebUI 镜像构建 |
-| `scripts/install_webui.sh` | WebUI 安装前检查函数；当前脚本无执行入口，目录创建尚未连接 Compose 数据卷 |
+| `compose.webui.yaml` | WebUI Docker Compose 服务、独立持久卷、HTTPS 对外端口与安全 Cookie |
+| `Dockerfile.webui` | WebUI 镜像构建与直接 HTTPS 启动 |
+| `scripts/install_webui.sh` | 固定版本发布包与单文件安装脚本制作；下载校验、Docker 检查、交互初始化、升级备份与 HTTPS 验证 |
 | `config/webui/AGENTS.md` | 安装后 WebUI 的独立操作约束 |
 | `config/webui/CLAUDE.md` | 安装后 WebUI 的独立 Agent 说明 |
 | `config/docker/` | Docker daemon、service、socket 模板 |
@@ -254,3 +254,4 @@
 | 2026-09-30 | 安装脚本目录检查改为交互输入绝对路径并创建；按当前脚本状态修正入口及部署描述。 |
 | 2026-09-30 | 接入 FastAPI Users 用户管理和权限控制、首次部署随机 admin 口令与旧管理员迁移；补充 WebUI 容器用法、HTTPS Cookie 配置和本地认证自检。 |
 | 2026-09-30 | 将 `tests/` 设为仅供本地 Agent 自检的忽略目录，移除测试文件例外及清单条目，并同步仓库 Agent 规则。 |
+| 2026-10-08 | WebUI 增加固定版本单脚本发布与在线安装、IP 自签名 HTTPS、独立卷升级备份和本地安装自检；同步容器部署入口与公开用法。 |

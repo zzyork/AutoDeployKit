@@ -1,6 +1,6 @@
 services:
   webui:
-    image: autodeploykit-webui:local
+    image: autodeploykit-webui:${WEBUI_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: Dockerfile.webui
@@ -11,7 +11,7 @@ services:
     tmpfs:
       - /tmp
     ports:
-      - "127.0.0.1:8765:8765"
+      - "0.0.0.0:${WEBUI_PORT:-8765}:8765"
     volumes:
       - webui_data:/var/lib/autodeploykit
       - webui_key:/etc/autodeploykit:ro
@@ -21,13 +21,15 @@ services:
       - ALL
 
   init:
-    image: autodeploykit-webui:local
+    image: autodeploykit-webui:${WEBUI_IMAGE_TAG:-local}
     profiles: [setup]
     read_only: true
     tmpfs:
       - /tmp
     entrypoint: ["autodeploykit-webui-init"]
     command: []
+    environment:
+      WEBUI_TLS_IP: ${WEBUI_TLS_IP:-127.0.0.1}
     volumes:
       - webui_data:/var/lib/autodeploykit
       - webui_key:/etc/autodeploykit

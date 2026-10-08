@@ -132,21 +132,31 @@ python cli.py server_check webservers
 
 并发数量由环境变量 `MAX_WORKERS` 控制；未设置时默认最多 5 个并发。
 
-## WebUI 容器使用
+## WebUI 在线安装
 
-WebUI 需要 Docker Engine、独立命令 `docker-compose` v2 及可访问 Python 包索引的构建环境；仅有 `docker compose` 插件时请将下方命令相应替换。镜像标签为 `autodeploykit-webui:local`。
+部署主机须为 Linux `x86_64`，具备 root 权限、交互终端、公网下载能力、`tar`、`sha256sum`，且安装目录与 Docker 数据目录各有至少 1 GiB 可用空间。如未安装 `curl`、Docker Engine / Compose v2，脚本会在确认后尝试从 APT/DNF 软件源安装。镜像构建还需访问基础镜像仓库和 Python 包索引。
 
-在部署主机的交互终端、仓库目录下首次初始化并启动：
+每次发布时，维护者先将目标版本源码提交，更新 `scripts/install_webui.sh` 顶部的 `WEBUI_VERSION`，再在仓库中运行：
 
 ```bash
-docker-compose -f compose.webui.yaml build webui
-docker-compose -f compose.webui.yaml --profile setup run --rm --no-deps init
-docker-compose -f compose.webui.yaml up -d --no-deps webui
+bash scripts/install_webui.sh --prepare-release
 ```
 
-初始化时随机创建 `admin` 账号，初始口令只在终端显示一次，不会以明文写入磁盘。请立即妥善保存并登录后修改；不能从容器日志找回。普通账号由管理员在设置页创建，能查看共享资产和报告并发起只读巡检，不能修改资产、SSH 凭据或模型配置。资产、SSH 公钥、会话、任务和报告对所有已登录账号共享，聊天内容不提供个人隔离。WebUI 只监听主机 `127.0.0.1:8765`，对外访问须经 HTTPS 反向代理并限制访问来源。反向代理必须透传原始 Host（例如 Nginx 的 `proxy_set_header Host $http_host;`），否则来源校验会拒绝登录；Compose 默认要求 HTTPS Cookie，本机直接通过 HTTP 登录时需在自有部署配置中取消 `WEBUI_SECURE_COOKIES=1`。
+将生成的 `dist/autodeploykit-webui-v<版本>.tar.gz` 与 `dist/install_webui-v<版本>.sh` 一同上传到可公开下载的 GitHub Releases 同名 `v<版本>` 标签；未上传前单脚本在线安装不可用。安装脚本内已嵌入版本包的 SHA-256，不要直接分发仓库中的模板脚本。
 
-已有管理员数据不会重新生成口令；旧版单管理员数据库可用原管理员口令登录，首次登录后自动迁移账号。升级前先安排停止旧实例的写入并分别备份数据库/报告卷和根密钥卷；升级时不要在旧服务运行期间执行 `init`，直接构建并替换 WebUI 服务，由新容器迁移会话表。不要在丢失根密钥后重新初始化。当前 `scripts/install_webui.sh` 尚未接入完整部署流程，不要用它代替以上命令。
+当前校验仅固定源码发布包；`Dockerfile.webui` 的基础镜像标签及 `pyproject.toml` 的依赖范围尚未锁定。正式发布前应固定基础镜像摘要与 Python 依赖版本，并在 Linux Docker 主机完成首次安装、重复运行和升级验证。
+
+服务器只需取得已发布的单个脚本，在交互终端以 root 运行：
+
+```bash
+bash install_webui-v<版本>.sh
+```
+
+如已将**相同文件布局**的版本包发布到国内 HTTPS 下载源，可在运行前设置 `AUTODEPLOYKIT_WEBUI_DOWNLOAD_BASE_URL`，其值为 `.../releases/download`，脚本会自动拼接 `/v<版本>/autodeploykit-webui-v<版本>.tar.gz`；未设置时使用 GitHub Releases。指定源下载或校验失败不会自动切换来源。
+
+安装时选择安装目录（默认 `/data/autodeploykit`）、实际访问的 IPv4 地址和 HTTPS 端口（默认 `8765`）。服务在宿主机 `0.0.0.0:<端口>` 对外监听，不限制来源 IP；数据/报告和加密根密钥保存在两个独立 Docker 卷，安装目录保存部署文件及升级备份。首次安装随机生成 `admin` 口令，只在终端显示一次，请立即保存并登录后修改。浏览器访问脚本显示的 `https://<所选IP>:<端口>/`；自签名证书会触发信任警告，请核对终端显示的证书指纹。防火墙和云安全组仍可能需要由管理员另行放行端口。
+
+再次运行同版本脚本会检查证书并重新启动服务。使用新版本脚本升级时保持相同的安装目录、IP 和端口；脚本先构建新镜像，暂停旧服务写入，备份并验证数据库、报告和密钥，备份失败不升级。旧版手动 Compose 部署未自动接管，须先人工迁移；丢失密钥时不得重新初始化。数据库升级可能修改 schema，启动失败后不要只切回旧镜像，需使用安装目录下的匹配备份恢复。普通账号由管理员在设置页创建；资产、会话、任务和报告对已登录账号共享。
 
 ## 许可证
 
