@@ -1,1 +1,0 @@
-"""WebUI application for AutoDeployKit."""

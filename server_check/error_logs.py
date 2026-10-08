@@ -5,9 +5,8 @@ from utils.ssh_utils import run_command
 
 
 def _collect_journal_errors(client, days, lines):
-    shell = "bash -c" if getattr(client, "_web_mode", False) is True else "bash -lc"
     cmd = (
-        f"{shell} '"
+        "bash -lc '"
         "if command -v journalctl >/dev/null 2>&1; then "
         "set -o pipefail; "
         f"journalctl --since \"{days} days ago\" -p err..alert --no-pager "
@@ -19,10 +18,9 @@ def _collect_journal_errors(client, days, lines):
 
 
 def _collect_file_errors(client, path, lines):
-    shell = "bash -c" if getattr(client, "_web_mode", False) is True else "bash -lc"
     quoted_path = shlex.quote(path)
     cmd = (
-        f"{shell} "
+        "bash -lc "
         + shlex.quote(
             f"if [ -f {quoted_path} ]; then "
             "set -o pipefail; "

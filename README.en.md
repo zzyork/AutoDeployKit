@@ -152,7 +152,6 @@ When maintaining this repository with an AI Agent that supports Skills, enable a
 - `security-auditor`: enable when working on SSH, permissions, keys, command execution, input validation, or high-risk operations.
 - `architecture-designer`: enable for module boundaries, workflow refactoring, plugin design, or batch operations architecture changes.
 - `writing-plans` / `executing-plans`: enable when a clear specification exists or a larger change needs to be implemented in stages.
-- `frontend-design` or `ui-ux-pro-max`: enable if a Web UI, visual report, or interactive interface is added later.
 
 The Agent should also follow the project rules in `CLAUDE.md`: read the project instructions first; load `.venv` only when invoking repository modules or workflows; read target SSH configuration from `hosts` before any remote operation; and apply the command policy for read-only, modify/restart, and move/delete/stop/shutdown operations.
 

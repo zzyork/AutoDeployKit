@@ -17,17 +17,9 @@ dependencies = [
 autodeploykit = "cli:main"
 
 [project.optional-dependencies]
-web = [
-    "fastapi>=0.115,<1",
-    "uvicorn>=0.30,<1",
-    "cryptography>=44,<47",
-    "fastapi-users[sqlalchemy]>=15.0.5,<16",
-    "aiosqlite>=0.20,<1",
-]
 dev = [
     "ruff>=0.8",
     "mypy>=1.13",
-    "httpx>=0.27,<1",
 ]
 
 [build-system]
@@ -42,7 +34,6 @@ packages = [
     "server_ops",
     "software_ops",
     "utils",
-    "webui",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
@@ -105,11 +96,7 @@ known-first-party = [
     "server_ops",
     "software_ops",
     "utils",
-    "webui",
 ]
-
-[tool.ruff.lint.per-file-ignores]
-"webui/api.py" = ["B008"]  # FastAPI evaluates Depends when registering routes.
 
 [tool.ruff.lint.pydocstyle]
 # PEP 257 docstring convention. D rules are not selected yet because the

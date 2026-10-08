@@ -18,15 +18,13 @@
 | --- | --- | --- |
 | `middleware_ops/` | Python 模块 | Nginx、MySQL、Redis、RabbitMQ 中间件管理 |
 | `monitor_ops/` | Python 模块 | Prometheus、各类 exporter 监控安装 |
-| `server_check/` | Python 模块和数据目录 | CLI/WebUI 服务器巡检、配置和报告输出 |
+| `server_check/` | Python 模块和数据目录 | CLI 服务器巡检、配置和报告输出 |
 | `server_ops/` | Python 模块 | 服务器初始化、系统配置和 OpenSSL 管理 |
 | `software_ops/` | Python 模块 | Docker、Minio、Supervisor、JDK 管理 |
 | `utils/` | Python 支撑模块 | SSH、文件传输、菜单、输出、发行版和软件检测 |
-| `webui/` | Python 模块和静态资源 | FastAPI WebUI、资产、认证、任务、巡检和报告接口 |
 | `config/` | 配置模板 | Linux、Docker、MySQL、Nginx、Prometheus 等服务模板 |
 | `scripts/` | 运维脚本 | 离线巡检、漏洞检查和 pip 引导 |
-| `docs/` | 项目文档 | 项目清单及设计记录 |
-| `docs/plans/` | 设计和实施文档 | WebUI 架构与版本实施记录 |
+| `docs/` | 项目文档 | 项目清单 |
 
 ## 根目录文件
 
@@ -52,7 +50,6 @@
 | `software_ops/main.py:run` | `software_ops` | 软件管理菜单 |
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
-| `webui.app:create_app` | FastAPI 应用工厂 | 创建 WebUI 应用；仓库不提供自动化部署流程 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
 | `scripts/generate_nginx_vulnerability_report.py:main` | Python 直接调用 | 生成 Nginx 漏洞报告 |
@@ -82,13 +79,6 @@
 | Supervisor 管理和 ini 管理 | `software_ops/supervisor_manager.py` | CLI 菜单已接入；远程修改受根目录规则约束 |
 | JDK 查询和安装 | `software_ops/jdk_manager.py` | CLI 菜单已接入 |
 | CLI 服务器巡检 | `server_check/main.py` | 已接入；默认报告目录参见 `README.md` |
-| WebUI 只读服务器巡检 | `webui/jobs.py`、`server_check/main.py` | 已接入；只允许登记且启用的资产 |
-| WebUI 资产和 SSH 密钥管理 | `webui/api.py`、`webui/storage.py` | 已接入；凭据加密存储 |
-| WebUI 多用户、会话和 CSRF | `webui/users.py`、`webui/api.py`、`webui/storage.py` | FastAPI Users 管理账号；资产、会话、任务及报告共享，管理员与普通账号权限分离，支持旧管理员口令迁移 |
-| WebUI 模型工具调用和风险摘要 | `webui/agent.py` | 仅开放 `inspect_servers`、`latest_inspection` |
-| WebUI 任务队列和 SSE 事件 | `webui/jobs.py`、`webui/api.py` | 已接入；单后台线程处理任务 |
-| WebUI 报告查询 | `webui/storage.py`、`webui/api.py` | 已接入；报告位于 WebUI 数据目录 |
-| WebUI 部署 | `webui/app.py`、`webui/bootstrap.py` | 可手动初始化并运行应用；自动安装、容器启动和升级流程已移除 |
 | Nginx 漏洞检查和报告 | `scripts/check_nginx_cve_2026_42945.py`、`scripts/generate_nginx_vulnerability_report.py` | 独立脚本，不属于 CLI 菜单 |
 
 ## CLI 模块和文件
@@ -144,7 +134,7 @@
 
 | 文件 | 模块职责 | 关键符号 |
 | --- | --- | --- |
-| `server_check/main.py` | 注册检查项、执行 CLI/WebUI 巡检、写 Markdown 报告 | `CHECK_HANDLERS`、`WEB_CHECK_HANDLERS`、`inspect_server_web`、`inspect_server`、`choose_report_path`、`run` |
+| `server_check/main.py` | 注册检查项、执行 CLI 巡检、写 Markdown 报告 | `CHECK_HANDLERS`、`inspect_server`、`choose_report_path`、`run` |
 | `server_check/common.py` | 默认巡检配置和配置合并 | `DEFAULT_CONFIG`、`load_config` |
 | `server_check/server_info.py` | 主机基础信息 | `server_info` |
 | `server_check/server_resources.py` | CPU、内存、磁盘、Swap 资源 | `system_resources` |
@@ -169,26 +159,8 @@
 | `utils/server_utils.py` | IP 地址校验 | `is_valid_ip` |
 | `utils/menu_runner.py` | 多主机菜单循环和操作分发 | `run_menu` |
 | `utils/choice.py` | 是/否确认和菜单选择 | `confirm_yes_no`、`menu_choice` |
-| `utils/output.py` | CLI/WebUI 输出缓冲、日志和状态输出 | `buffer_output`、`web_output`、`log`、`print_info`、`print_success`、`print_warning`、`print_error`、`print_header`、`print_step` |
+| `utils/output.py` | CLI 输出缓冲、日志和状态输出 | `buffer_output`、`log`、`print_info`、`print_success`、`print_warning`、`print_error`、`print_header`、`print_step` |
 | `utils/__init__.py` | 包标识 | 无公开入口 |
-
-## WebUI 模块和文件
-
-| 文件 | 模块职责 | 关键符号/接口 |
-| --- | --- | --- |
-| `webui/app.py` | 创建 FastAPI 应用、生命周期、静态资源和安全响应头 | `create_app`、`GET /` |
-| `webui/bootstrap.py` | 本地创建加密密钥、管理员和自签名 TLS 证书，支持备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
-| `webui/api.py` | 请求模型、认证与权限依赖和 REST/SSE 路由 | `create_router`；账号管理与登录、主机、SSH key、设置、聊天、会话、任务、报告接口 |
-| `webui/storage.py` | SQLite schema、加密凭据、资产、绑定用户的会话、任务和报告 | `Database`；`initialize`、`create_session`、`get_session`、`revoke_user_sessions`、`add_host`、`resolve_hosts`、`create_job`、`report_path` |
-| `webui/users.py` | FastAPI Users 与 SQLite 用户适配、认证和旧管理员迁移 | `UserStore`、`UserManager`、`User`、`public_user` |
-| `webui/security.py` | 根密钥文件和旧管理员密码哈希兼容 | `create_key_file`、`hash_password`、`verify_password` |
-| `webui/assets.py` | WebUI 资产字段校验 | `validate_host` |
-| `webui/jobs.py` | 单后台线程任务队列、远端巡检和 SSE 事件 | `JobRunner`；`enqueue`、`events`、`_process`、`_inspect_host` |
-| `webui/agent.py` | 模型请求、工具白名单、参数校验和安全摘要 | `TOOLS`、`decide`、`summarize` |
-| `webui/static/index.html` | WebUI 页面结构 | 单页入口 |
-| `webui/static/app.js` | 多账号登录、账号管理、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
-| `webui/static/app.css` | WebUI 样式 | 页面样式 |
-| `webui/__init__.py` | 包标识 | 无公开入口 |
 
 ## 配置、部署和文档文件
 
@@ -203,13 +175,10 @@
 | `config/prometheus/` | Prometheus、node、MySQL、Redis exporter 配置和 service 模板 |
 | `config/redis/` | Redis systemd service 模板 |
 | `config/supervisor/` | Supervisor 配置、service 和程序 ini 模板 |
-| `config/webui/` | 已安装 WebUI 的独立 Agent 操作规则模板 |
 | `README.md` | 中文项目介绍、功能、环境、安装和使用说明 |
 | `README.en.md` | 英文项目说明 |
 | `LICENSE` | MIT 许可证 |
-| `docs/plans/2026-09-28-webui-v1-implementation.md` | WebUI v1 实施计划 |
-| `docs/plans/WebUI 自然语言运维架构设计.md` | WebUI 自然语言运维架构设计 |
-| `monitor.html` | 独立监控页面资源，当前不属于 Python CLI/WebUI 主入口 |
+| `monitor.html` | 独立监控页面资源，当前不属于 Python CLI 主入口 |
 
 ### `config/` 具体文件
 
@@ -223,7 +192,6 @@
 | `config/prometheus/` | `mysqld-exporter.service`、`mysqld_exporter.conf`、`node-exporter.service`、`prometheus.service`、`prometheus.yml`、`redis-exporter.service` |
 | `config/redis/` | `redis.service` |
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
-| `config/webui/` | `AGENTS.md`、`CLAUDE.md` |
 
 ## 脚本
 
@@ -241,18 +209,6 @@
 | 2026-09-29 | 初始建立仓库目录、文件、模块、功能和入口索引；同步登记根目录 Agent 规则，明确 Agent 优先定位与每次变更同步要求。 |
 | 2026-09-29 | 修复 Redis 配置模板替换、密码传递、安装目录权限和 Redis Exporter systemd 模板，并新增 Redis 配置回归测试。 |
 | 2026-09-29 | 修复 Docker daemon.json 模板非 JSON 注释、安装配置校验及命令失败误报成功，并新增 Docker 安装回归测试。 |
-| 2026-09-30 | 核对远端镜像构建流程时修正测试目录清单：当前测试源码文件未纳入版本控制。 |
-| 2026-09-30 | WebUI 安装改用项目 Docker 静态包与独立 Compose 流程，移除安装询问，首次安装从受限口令文件初始化管理员；同步公开用法并新增无交互自检。 |
 | 2026-09-30 | 明确清单仅收录 Git 已跟踪且计划推送的仓库文件，移除未纳入版本控制的文件及目录条目，并同步根目录 Agent 规则。 |
-| 2026-09-30 | 安装脚本目录检查改为交互输入绝对路径并创建；按当前脚本状态修正入口及部署描述。 |
-| 2026-09-30 | 接入 FastAPI Users 用户管理和权限控制、首次部署随机 admin 口令与旧管理员迁移；补充 WebUI 容器用法、HTTPS Cookie 配置和本地认证自检。 |
 | 2026-09-30 | 将 `tests/` 设为仅供本地 Agent 自检的忽略目录，移除测试文件例外及清单条目，并同步仓库 Agent 规则。 |
-| 2026-10-08 | WebUI 增加固定版本单脚本发布与在线安装、IP 自签名 HTTPS、独立卷升级备份和本地安装自检；同步容器部署入口与公开用法。 |
-| 2026-10-08 | 新增 WebUI 发布与更新手册，记录 Linux 发布机命令、推送前差异检查和发布后的验证步骤；公开用法增加手册入口。 |
-| 2026-10-08 | WebUI 发布物改为每版本独立目录存放脚本和源码包，两个附件使用固定文件名；同步安装脚本、公开用法和发布手册。 |
-| 2026-10-08 | 修正 WebUI 安装时单 IP 选择：自动采集当前网卡 IPv4 并签发多 IP 证书，兼容旧安装状态、同步版本和安装说明。 |
-| 2026-10-08 | WebUI v0.1.2 发布改为直接从工作区构建推送 GHCR 镜像、以 digest 固定安装版本；安装改为校验 Compose 附件并拉取镜像启动，兼容旧部署升级恢复；同步发布与安装说明。 |
-| 2026-10-08 | WebUI 发布机改用 Docker 原生命令构建、推送并读取镜像 digest，不再依赖 Buildx；同步发布机环境说明。 |
-| 2026-10-08 | WebUI 安装脚本移除 Docker Engine、Compose v2 自动安装及 Docker 自动启动，改为提前检查已有运行环境；同步安装和发布说明。 |
-| 2026-10-08 | 删除 WebUI 自动安装、初始化、容器构建/启动与发布流程及专用模板；保留应用代码，清理失效入口与公开用法。 |
-| 2026-10-08 | 核对 WebUI 启动入口时补录已跟踪的本地初始化脚本和安装目录规则模板，澄清手动初始化仍可使用。 |
+| 2026-10-08 | 移除 WebUI 应用、模板、设计文档和专用依赖/调用分支；保留 CLI 与独立监控页面，同步公开说明及索引。 |
