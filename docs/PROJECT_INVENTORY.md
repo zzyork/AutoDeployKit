@@ -57,7 +57,7 @@
 | `monitor_ops/main.py:run` | `monitor_ops` | 监控管理菜单 |
 | `server_check/main.py:run` | `server_check` | 并发执行 CLI 巡检并写入报告 |
 | `webui.app:create_app` | `uvicorn webui.app:create_app --factory` | 创建 FastAPI 应用；容器由 Compose 使用自签名证书通过 HTTPS 启动 |
-| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化管理员、生成 IP 自签名证书；支持证书检查和升级备份，已有管理员数据不覆盖 |
+| `webui.bootstrap:main` | `autodeploykit-webui-init`；Compose `init` 服务 | 首次交互初始化管理员、为所有当前网卡 IPv4 生成自签名证书；支持证书更新和升级备份，已有管理员数据不覆盖 |
 | `scripts/install_webui.sh` | `bash scripts/install_webui.sh --prepare-release`；已发布单文件脚本交互安装 | 制作固定版本包与嵌入校验值的安装脚本；检查 Docker、下载校验、首次初始化、HTTPS 启动及升级备份 |
 | `scripts/server_check_offline.sh` | Shell 直接调用 | 离线巡检辅助脚本 |
 | `scripts/check_nginx_cve_2026_42945.py:main` | Python 直接调用 | Nginx CVE 检查 |
@@ -189,7 +189,7 @@
 | `webui/assets.py` | WebUI 资产字段校验 | `validate_host` |
 | `webui/jobs.py` | 单后台线程任务队列、远端巡检和 SSE 事件 | `JobRunner`；`enqueue`、`events`、`_process`、`_inspect_host` |
 | `webui/agent.py` | 模型请求、工具白名单、参数校验和安全摘要 | `TOOLS`、`decide`、`summarize` |
-| `webui/bootstrap.py` | 首次交互生成管理员口令、IP 自签名证书及只读数据备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
+| `webui/bootstrap.py` | 首次交互生成管理员口令、多 IP 自签名证书及只读数据备份 | `main`、`initialize_users`、`ensure_tls_certificate`、`backup_installation` |
 | `webui/static/index.html` | WebUI 页面结构 | 单页入口 |
 | `webui/static/app.js` | 多账号登录、账号管理、资产、聊天、任务和报告交互 | 浏览器端应用逻辑 |
 | `webui/static/app.css` | WebUI 样式 | 页面样式 |
@@ -260,3 +260,4 @@
 | 2026-10-08 | WebUI 增加固定版本单脚本发布与在线安装、IP 自签名 HTTPS、独立卷升级备份和本地安装自检；同步容器部署入口与公开用法。 |
 | 2026-10-08 | 新增 WebUI 发布与更新手册，记录 Linux 发布机命令、推送前差异检查和发布后的验证步骤；公开用法增加手册入口。 |
 | 2026-10-08 | WebUI 发布物改为每版本独立目录存放脚本和源码包，两个附件使用固定文件名；同步安装脚本、公开用法和发布手册。 |
+| 2026-10-08 | 修正 WebUI 安装时单 IP 选择：自动采集当前网卡 IPv4 并签发多 IP 证书，兼容旧安装状态、同步版本和安装说明。 |

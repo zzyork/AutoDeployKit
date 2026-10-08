@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Update this version before preparing each release; the release command embeds its archive hash.
-WEBUI_VERSION="0.1.0"
+WEBUI_VERSION="0.1.1"
 WEBUI_ARCHIVE_SHA256="__ARCHIVE_SHA256__"
 PROJECT="autodeploykit"
 ARCHIVE="autodeploykit-webui.tar.gz"
@@ -112,19 +112,31 @@ valid_ip() {
     (( 10#${octets[0]} > 0 && 10#${octets[0]} < 224 && 10#${octets[0]} != 127 ))
 }
 
+collect_addresses() {
+    command -v ip >/dev/null || fail '缺少 ip 命令，无法读取网卡地址。'
+    mapfile -t WEBUI_ADDRESSES < <(ip -o -4 addr show scope global | awk '{sub(/\/.*/, "", $4); print $4}' | sort -u)
+    ((${#WEBUI_ADDRESSES[@]} > 0)) || fail '没有检测到可用的非回环 IPv4 网卡地址。'
+    local address
+    for address in "${WEBUI_ADDRESSES[@]}"; do
+        valid_ip "$address" || fail '检测到无效的网卡地址。'
+    done
+    WEBUI_CHECK_IP="${WEBUI_ADDRESSES[0]}"
+    WEBUI_TLS_IPS="$(IFS=,; printf '%s' "${WEBUI_ADDRESSES[*]}")"
+    export WEBUI_TLS_IPS
+}
+
 read_settings() {
     read -r -p '安装目录（默认 /data/autodeploykit）：' INSTALL_DIR
     INSTALL_DIR="${INSTALL_DIR:-/data/autodeploykit}"
     [[ "$INSTALL_DIR" == /* && "$INSTALL_DIR" != / && ! "$INSTALL_DIR" =~ (^|/)\.\.(/|$) && ! -L "$INSTALL_DIR" ]] || fail '安装目录必须为非根目录的绝对路径，不能包含 .. 或符号链接。'
-    say '检测到的网卡地址：'
-    if command -v ip >/dev/null; then ip -o -4 addr show scope global; fi
-    read -r -p '请输入浏览器实际访问的 IPv4 地址：' WEBUI_TLS_IP
-    valid_ip "$WEBUI_TLS_IP" || fail '访问地址必须是有效的 IPv4 地址。'
+    collect_addresses
+    say '将为当前网卡 IPv4 地址生成证书：'
+    printf '  %s\n' "${WEBUI_ADDRESSES[@]}"
     read -r -p 'HTTPS 端口（默认 8765）：' WEBUI_PORT
     WEBUI_PORT="${WEBUI_PORT:-8765}"
     [[ "$WEBUI_PORT" =~ ^[0-9]{1,5}$ ]] && (( 10#$WEBUI_PORT >= 1 && 10#$WEBUI_PORT <= 65535 )) || fail '无效端口。'
     WEBUI_PORT="$((10#$WEBUI_PORT))"
-    export WEBUI_TLS_IP WEBUI_PORT
+    export WEBUI_PORT
 }
 
 download_release() {
@@ -187,11 +199,12 @@ check_curl
 download_release
 check_docker
 check_space
+collect_addresses
 STATE="$INSTALL_DIR/installation.state"
 if [[ -f "$STATE" ]]; then
     IFS='|' read -r OLD_VERSION OLD_IP OLD_PORT < "$STATE"
     [[ "$OLD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$OLD_PORT" =~ ^[0-9]{1,5}$ ]] && valid_ip "$OLD_IP" || fail '安装状态无效，请人工检查。'
-    [[ "$OLD_IP" == "$WEBUI_TLS_IP" && "$OLD_PORT" == "$WEBUI_PORT" ]] || fail '升级不能同时改变访问 IP 或端口；请先保留原设置。'
+    [[ "$OLD_PORT" == "$WEBUI_PORT" ]] || fail '升级不能同时改变端口；请先保留原设置。'
     [[ -f "$INSTALL_DIR/releases/v$OLD_VERSION/compose.webui.yaml" ]] || fail '原版本部署文件缺失。'
     volume_exists webui_data && volume_exists webui_key || fail '已有安装缺少数据卷或密钥卷，拒绝初始化。'
     if [[ "$OLD_VERSION" == "$WEBUI_VERSION" ]]; then
@@ -234,12 +247,18 @@ else
     fi
     compose_at "$RELEASE_DIR" up -d --no-deps webui
 fi
+before_tls_ips="$WEBUI_TLS_IPS"
+collect_addresses
+if [[ "$before_tls_ips" != "$WEBUI_TLS_IPS" ]]; then
+    compose_at "$RELEASE_DIR" --profile setup run --rm --no-deps init --tls-only
+    compose_at "$RELEASE_DIR" up -d --force-recreate --no-deps webui
+fi
 container="$(compose_at "$RELEASE_DIR" ps -q webui)"
 [[ -n "$container" ]] || fail 'WebUI 容器未启动。'
 docker cp "$container:/etc/autodeploykit/tls.crt" "$STAGE/tls.crt"
 ready=0
 for ((attempt=0; attempt<20; attempt++)); do
-    if curl -fsS --cacert "$STAGE/tls.crt" --resolve "$WEBUI_TLS_IP:$WEBUI_PORT:127.0.0.1" "https://$WEBUI_TLS_IP:$WEBUI_PORT/" -o /dev/null; then
+    if curl -fsS --cacert "$STAGE/tls.crt" --resolve "$WEBUI_CHECK_IP:$WEBUI_PORT:127.0.0.1" "https://$WEBUI_CHECK_IP:$WEBUI_PORT/" -o /dev/null; then
         ready=1
         break
     fi
@@ -247,10 +266,13 @@ for ((attempt=0; attempt<20; attempt++)); do
 done
 [[ $ready -eq 1 ]] || fail 'HTTPS 启动检查失败，请检查容器日志；数据卷和备份均已保留。'
 fingerprint="$(docker exec "$container" autodeploykit-webui-init --tls-fingerprint)"
-printf '%s|%s|%s\n' "$WEBUI_VERSION" "$WEBUI_TLS_IP" "$WEBUI_PORT" > "$STATE.tmp"
+printf '%s|%s|%s\n' "$WEBUI_VERSION" "$WEBUI_CHECK_IP" "$WEBUI_PORT" > "$STATE.tmp"
 chmod 600 "$STATE.tmp"
 mv -- "$STATE.tmp" "$STATE"
 rm -f -- "$INSTALL_DIR/.install-pending"
-say "WebUI 已启动：https://$WEBUI_TLS_IP:$WEBUI_PORT/"
+say 'WebUI 已启动，可通过以下网卡地址访问（网络与防火墙须允许）：'
+for address in "${WEBUI_ADDRESSES[@]}"; do
+    say "https://$address:$WEBUI_PORT/"
+done
 say "证书 SHA-256 指纹：$fingerprint"
 say '自签名证书不会自动受到浏览器信任，首次访问请核对证书后继续。'

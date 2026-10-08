@@ -29,7 +29,7 @@ services:
     entrypoint: ["autodeploykit-webui-init"]
     command: []
     environment:
-      WEBUI_TLS_IP: ${WEBUI_TLS_IP:-127.0.0.1}
+      WEBUI_TLS_IPS: ${WEBUI_TLS_IPS:-127.0.0.1}
     volumes:
       - webui_data:/var/lib/autodeploykit
       - webui_key:/etc/autodeploykit

@@ -37,8 +37,10 @@ async def initialize_users(db):
         await users.close()
 
 
-def ensure_tls_certificate(key_directory, address):
-    ip = ipaddress.IPv4Address(address)
+def ensure_tls_certificate(key_directory, addresses):
+    ips = tuple(
+        dict.fromkeys(ipaddress.IPv4Address(value.strip()) for value in addresses.split(","))
+    )
     directory = Path(key_directory)
     cert_file = directory / "tls.crt"
     key_file = directory / "tls.key"
@@ -52,11 +54,14 @@ def ensure_tls_certificate(key_directory, address):
         private_key = serialization.load_pem_private_key(key_file.read_bytes(), password=None)
         if certificate.public_key().public_numbers() != private_key.public_key().public_numbers():
             raise ValueError("TLS certificate and key do not match")
-        if ip not in certificate.extensions.get_extension_for_class(
-            x509.SubjectAlternativeName
-        ).value.get_values_for_type(x509.IPAddress):
-            raise ValueError("TLS certificate does not cover the selected IP address")
-        if certificate.not_valid_after_utc > datetime.now(timezone.utc) + timedelta(days=30):
+        existing_ips = set(
+            certificate.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value.get_values_for_type(x509.IPAddress)
+        )
+        if set(ips) == existing_ips and certificate.not_valid_after_utc > datetime.now(
+            timezone.utc
+        ) + timedelta(days=30):
             return
 
     else:
@@ -64,13 +69,15 @@ def ensure_tls_certificate(key_directory, address):
     now = datetime.now(timezone.utc)
     certificate = (
         x509.CertificateBuilder()
-        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, str(ip))]))
-        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, str(ip))]))
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, str(ips[0]))]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, str(ips[0]))]))
         .public_key(private_key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - timedelta(minutes=5))
         .not_valid_after(now + timedelta(days=397))
-        .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ip)]), critical=False)
+        .add_extension(
+            x509.SubjectAlternativeName([x509.IPAddress(ip) for ip in ips]), critical=False
+        )
         .sign(private_key, hashes.SHA256())
     )
     new_key = key_file.with_suffix(".key.new")
@@ -159,7 +166,12 @@ def main():
     parser.add_argument("--key-file", default=os.getenv("WEBUI_KEY_FILE"))
     parser.add_argument("--create-key-only", action="store_true")
     parser.add_argument("--write-instructions", metavar="INSTALL_DIR")
-    parser.add_argument("--tls-ip", default=os.getenv("WEBUI_TLS_IP"))
+    parser.add_argument(
+        "--tls-ips",
+        "--tls-ip",
+        dest="tls_ips",
+        default=os.getenv("WEBUI_TLS_IPS") or os.getenv("WEBUI_TLS_IP"),
+    )
     parser.add_argument("--tls-only", action="store_true")
     parser.add_argument("--tls-fingerprint", action="store_true")
     parser.add_argument("--backup-dir")
@@ -188,12 +200,12 @@ def main():
     if args.backup_dir:
         backup_installation(db, args.backup_dir)
         return
-    if not args.tls_ip and not args.create_key_only:
-        parser.error("Provide --tls-ip or WEBUI_TLS_IP")
+    if not args.tls_ips and not args.create_key_only:
+        parser.error("Provide --tls-ips or WEBUI_TLS_IPS")
     if args.tls_only:
         if not db.path.is_file() or not db.key_path.is_file():
             parser.error("Existing database and encryption key are required")
-        ensure_tls_certificate(db.key_path.parent, args.tls_ip)
+        ensure_tls_certificate(db.key_path.parent, args.tls_ips)
         return
     if not db.key_path.exists():
         if db.path.exists():
@@ -202,7 +214,7 @@ def main():
     if args.create_key_only:
         return
     db.initialize()
-    ensure_tls_certificate(db.key_path.parent, args.tls_ip)
+    ensure_tls_certificate(db.key_path.parent, args.tls_ips)
     try:
         asyncio.run(initialize_users(db))
     except ValueError as exc:

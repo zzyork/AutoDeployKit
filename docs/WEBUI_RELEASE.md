@@ -21,10 +21,10 @@ git merge-base --is-ancestor github/master HEAD
 
 ## 首次发布
 
-当前脚本版本为 `0.1.0`；如果已修改版本，以 `scripts/install_webui.sh` 顶部的 `WEBUI_VERSION` 和 `pyproject.toml` 的版本为准，两者必须一致。仓库源码必须已提交，否则 `--prepare-release` 会拒绝执行。
+当前脚本版本为 `0.1.1`；如果已修改版本，以 `scripts/install_webui.sh` 顶部的 `WEBUI_VERSION` 和 `pyproject.toml` 的版本为准，两者必须一致。仓库源码必须已提交，否则 `--prepare-release` 会拒绝执行。已发布的 `v0.1.0` 脚本仍会询问单个 IP，不要覆盖旧附件；此修复须以新版本发布。
 
 ```bash
-VERSION=0.1.0
+VERSION=0.1.1
 bash scripts/install_webui.sh --prepare-release
 sha256sum "dist/v${VERSION}/autodeploykit-webui.tar.gz"
 bash -n "dist/v${VERSION}/install_webui.sh"
@@ -48,10 +48,10 @@ gh release view "v${VERSION}" --repo zzyork/AutoDeployKit
 
 ## 后续版本
 
-每次使用新版本号，例如 `0.1.1`。先修改 `scripts/install_webui.sh` 的 `WEBUI_VERSION`、`pyproject.toml` 的 `version`，并按仓库规则更新 `docs/PROJECT_INVENTORY.md` 的变更记录；如有其他代码改动，一并审阅并只暂存本次涉及的文件。
+每次使用新版本号，例如 `0.1.2`。先修改 `scripts/install_webui.sh` 的 `WEBUI_VERSION`、`pyproject.toml` 的 `version`，并按仓库规则更新 `docs/PROJECT_INVENTORY.md` 的变更记录；如有其他代码改动，一并审阅并只暂存本次涉及的文件。
 
 ```bash
-VERSION=0.1.1
+VERSION=0.1.2
 ${EDITOR:-vi} scripts/install_webui.sh pyproject.toml docs/PROJECT_INVENTORY.md
 git diff --check
 git diff
@@ -66,12 +66,12 @@ git push origin master
 
 ## 发布后验证
 
-确认 GitHub Release 页面有两个附件，且安装脚本中的版本、预期哈希与发布包匹配。应在独立 Linux Docker 主机通过已发布的脚本验收首次安装、同版本重复运行及使用新版本脚本升级；首次安装需交互终端显示管理员口令，升级后检查 HTTPS 和备份目录。安装及升级时使用同一个安装目录、访问 IP 与端口；安装目录保存部署文件和备份，数据库/报告与加密根密钥仍分别存放在 Docker 命名卷中。
+确认 GitHub Release 页面有两个附件，且安装脚本中的版本、预期哈希与发布包匹配。应在独立 Linux Docker 主机通过已发布的脚本验收首次安装、同版本重复运行及使用新版本脚本升级；首次安装需交互终端显示管理员口令，升级后检查各网卡 IPv4 的 HTTPS 证书、访问入口及备份目录。安装及升级时使用同一个安装目录和端口；安装目录保存部署文件和备份，数据库/报告与加密根密钥仍分别存放在 Docker 命名卷中。
 
-在**测试主机**的交互终端执行；升级时将版本号改为新版本，安装提示中输入与原安装相同的目录、IP 和端口：
+在**测试主机**的交互终端执行；升级时将版本号改为新版本，安装提示中输入与原安装相同的目录和端口：
 
 ```bash
-VERSION=0.1.0
+VERSION=0.1.1
 mkdir -p "v${VERSION}"
 curl -fL -o "v${VERSION}/install_webui.sh" \
   "https://github.com/zzyork/AutoDeployKit/releases/download/v${VERSION}/install_webui.sh"
