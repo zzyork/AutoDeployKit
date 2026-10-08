@@ -5,7 +5,7 @@ set -Eeuo pipefail
 WEBUI_VERSION="0.1.0"
 WEBUI_ARCHIVE_SHA256="__ARCHIVE_SHA256__"
 PROJECT="autodeploykit"
-ARCHIVE="autodeploykit-webui-v${WEBUI_VERSION}.tar.gz"
+ARCHIVE="autodeploykit-webui.tar.gz"
 DEFAULT_DOWNLOAD_BASE="https://github.com/zzyork/AutoDeployKit/releases/download"
 
 fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
@@ -16,15 +16,15 @@ prepare_release() {
     root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
     paths=(.dockerignore Dockerfile.webui compose.webui.yaml pyproject.toml README.md cli.py config/webui middleware_ops monitor_ops server_check server_ops software_ops utils webui)
     [[ -z "$(git -C "$root" status --porcelain -- "${paths[@]}" scripts/install_webui.sh)" ]] || fail '请先提交发布涉及的源码，再制作版本包。'
-    output="$root/dist"
+    output="$root/dist/v${WEBUI_VERSION}"
     mkdir -p -- "$output"
     git -C "$root" archive --format=tar --prefix="autodeploykit-webui-v${WEBUI_VERSION}/" HEAD -- "${paths[@]}" | gzip -n > "$output/$ARCHIVE"
     hash="$(sha256sum "$output/$ARCHIVE")"
     hash="${hash%% *}"
-    sed "s/__ARCHIVE_SHA256__/$hash/g" "$root/scripts/install_webui.sh" | tr -d '\r' > "$output/install_webui-v${WEBUI_VERSION}.sh"
-    chmod 755 "$output/install_webui-v${WEBUI_VERSION}.sh"
+    sed "s/__ARCHIVE_SHA256__/$hash/g" "$root/scripts/install_webui.sh" | tr -d '\r' > "$output/install_webui.sh"
+    chmod 755 "$output/install_webui.sh"
     say "发布文件：$output/$ARCHIVE"
-    say "发布脚本：$output/install_webui-v${WEBUI_VERSION}.sh"
+    say "发布脚本：$output/install_webui.sh"
     say "SHA-256：$hash"
 }
 

@@ -25,6 +25,7 @@
 | `webui/` | Python 模块和静态资源 | FastAPI WebUI、资产、认证、任务、巡检和报告接口 |
 | `config/` | 配置模板 | Linux、Docker、MySQL、Nginx、Prometheus 等服务模板 |
 | `scripts/` | 运维脚本 | WebUI 安装、离线巡检、漏洞检查和 pip 引导 |
+| `docs/` | 项目文档 | 项目清单、WebUI 发布维护指令及设计记录 |
 | `docs/plans/` | 设计和实施文档 | WebUI 架构与版本实施记录 |
 
 ## 根目录文件
@@ -34,6 +35,7 @@
 | `AGENTS.md` | 源码仓库维护、Agent 操作和远程操作约束 |
 | `CLAUDE.md` | 源码仓库的 Claude/Agent 操作约束，与 `AGENTS.md` 保持同步 |
 | `docs/PROJECT_INVENTORY.md` | 本清单；目录、文件、功能、模块和入口的权威导航 |
+| `docs/WEBUI_RELEASE.md` | WebUI 发布、版本更新与发布后验收命令 |
 | `.gitignore` | 忽略缓存、环境、凭据、运行时报告和构建产物 |
 | `.dockerignore` | WebUI 镜像构建上下文排除规则 |
 | `cli.py` | CLI 主入口，详见“入口索引” |
@@ -212,6 +214,7 @@
 | `config/redis/` | Redis systemd service 模板 |
 | `config/supervisor/` | Supervisor 配置、service 和程序 ini 模板 |
 | `README.md` | 中文项目介绍、功能、环境、安装和使用说明 |
+| `docs/WEBUI_RELEASE.md` | 发布机上的 Git 检查、版本制品生成、GitHub Release 发布与升级验收步骤 |
 | `README.en.md` | 英文项目说明 |
 | `LICENSE` | MIT 许可证 |
 | `docs/plans/2026-09-28-webui-v1-implementation.md` | WebUI v1 实施计划 |
@@ -255,3 +258,5 @@
 | 2026-09-30 | 接入 FastAPI Users 用户管理和权限控制、首次部署随机 admin 口令与旧管理员迁移；补充 WebUI 容器用法、HTTPS Cookie 配置和本地认证自检。 |
 | 2026-09-30 | 将 `tests/` 设为仅供本地 Agent 自检的忽略目录，移除测试文件例外及清单条目，并同步仓库 Agent 规则。 |
 | 2026-10-08 | WebUI 增加固定版本单脚本发布与在线安装、IP 自签名 HTTPS、独立卷升级备份和本地安装自检；同步容器部署入口与公开用法。 |
+| 2026-10-08 | 新增 WebUI 发布与更新手册，记录 Linux 发布机命令、推送前差异检查和发布后的验证步骤；公开用法增加手册入口。 |
+| 2026-10-08 | WebUI 发布物改为每版本独立目录存放脚本和源码包，两个附件使用固定文件名；同步安装脚本、公开用法和发布手册。 |

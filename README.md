@@ -142,17 +142,19 @@ python cli.py server_check webservers
 bash scripts/install_webui.sh --prepare-release
 ```
 
-将生成的 `dist/autodeploykit-webui-v<版本>.tar.gz` 与 `dist/install_webui-v<版本>.sh` 一同上传到可公开下载的 GitHub Releases 同名 `v<版本>` 标签；未上传前单脚本在线安装不可用。安装脚本内已嵌入版本包的 SHA-256，不要直接分发仓库中的模板脚本。
+将生成的 `dist/v<版本>/autodeploykit-webui.tar.gz` 与 `dist/v<版本>/install_webui.sh` 一同上传到可公开下载的 GitHub Releases 同名 `v<版本>` 标签；两个固定文件名由版本标签的下载路径区分。未上传前单脚本在线安装不可用。安装脚本内已嵌入版本包的 SHA-256，不要直接分发仓库中的模板脚本。
+
+维护者的完整发布、更新和验收命令见 [WebUI 发布与更新](docs/WEBUI_RELEASE.md)。
 
 当前校验仅固定源码发布包；`Dockerfile.webui` 的基础镜像标签及 `pyproject.toml` 的依赖范围尚未锁定。正式发布前应固定基础镜像摘要与 Python 依赖版本，并在 Linux Docker 主机完成首次安装、重复运行和升级验证。
 
 服务器只需取得已发布的单个脚本，在交互终端以 root 运行：
 
 ```bash
-bash install_webui-v<版本>.sh
+bash install_webui.sh
 ```
 
-如已将**相同文件布局**的版本包发布到国内 HTTPS 下载源，可在运行前设置 `AUTODEPLOYKIT_WEBUI_DOWNLOAD_BASE_URL`，其值为 `.../releases/download`，脚本会自动拼接 `/v<版本>/autodeploykit-webui-v<版本>.tar.gz`；未设置时使用 GitHub Releases。指定源下载或校验失败不会自动切换来源。
+如已将**相同文件布局**的版本包发布到国内 HTTPS 下载源，可在运行前设置 `AUTODEPLOYKIT_WEBUI_DOWNLOAD_BASE_URL`，其值为 `.../releases/download`，脚本会自动拼接 `/v<版本>/autodeploykit-webui.tar.gz`；未设置时使用 GitHub Releases。指定源下载或校验失败不会自动切换来源。
 
 安装时选择安装目录（默认 `/data/autodeploykit`）、实际访问的 IPv4 地址和 HTTPS 端口（默认 `8765`）。服务在宿主机 `0.0.0.0:<端口>` 对外监听，不限制来源 IP；数据/报告和加密根密钥保存在两个独立 Docker 卷，安装目录保存部署文件及升级备份。首次安装随机生成 `admin` 口令，只在终端显示一次，请立即保存并登录后修改。浏览器访问脚本显示的 `https://<所选IP>:<端口>/`；自签名证书会触发信任警告，请核对终端显示的证书指纹。防火墙和云安全组仍可能需要由管理员另行放行端口。
 
