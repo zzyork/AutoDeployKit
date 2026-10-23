@@ -192,23 +192,3 @@
 | `config/prometheus/` | `mysqld-exporter.service`、`mysqld_exporter.conf`、`node-exporter.service`、`prometheus.service`、`prometheus.yml`、`redis-exporter.service` |
 | `config/redis/` | `redis.service` |
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
-
-## 脚本
-
-| 文件 | 用途 |
-| --- | --- |
-| `scripts/check_nginx_cve_2026_42945.py` | 解析 Nginx 版本并判断指定 CVE 影响范围 |
-| `scripts/generate_nginx_vulnerability_report.py` | 解析产品版本、构造结果行并输出 XLSX 报告 |
-| `scripts/get-pip.py` | 外部 pip 引导脚本；非 AutoDeployKit 业务模块 |
-| `scripts/server_check_offline.sh` | 离线巡检辅助脚本 |
-
-## 变更记录
-
-| 日期 | 变更 |
-| --- | --- |
-| 2026-09-29 | 初始建立仓库目录、文件、模块、功能和入口索引；同步登记根目录 Agent 规则，明确 Agent 优先定位与每次变更同步要求。 |
-| 2026-09-29 | 修复 Redis 配置模板替换、密码传递、安装目录权限和 Redis Exporter systemd 模板，并新增 Redis 配置回归测试。 |
-| 2026-09-29 | 修复 Docker daemon.json 模板非 JSON 注释、安装配置校验及命令失败误报成功，并新增 Docker 安装回归测试。 |
-| 2026-09-30 | 明确清单仅收录 Git 已跟踪且计划推送的仓库文件，移除未纳入版本控制的文件及目录条目，并同步根目录 Agent 规则。 |
-| 2026-09-30 | 将 `tests/` 设为仅供本地 Agent 自检的忽略目录，移除测试文件例外及清单条目，并同步仓库 Agent 规则。 |
-| 2026-10-08 | 移除 WebUI 应用、模板、设计文档和专用依赖/调用分支；保留 CLI 与独立监控页面，同步公开说明及索引。 |
