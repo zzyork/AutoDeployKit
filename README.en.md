@@ -165,7 +165,7 @@ Example:
 
 ```ini
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22
+192.168.1.10 user=root password=passw0rd port=22 remark="Example Web host"
 192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
 
 [dbservers]
@@ -185,6 +185,8 @@ Supported fields:
 - `proxy_password`
 - `proxy_keyfile`
 - `proxy_port`
+
+Optional annotation: `remark="Notes"` is for human reference only and is not used for host matching, SSH connections, or operations. Quote remarks containing spaces and escape embedded double quotes as `\"`, for example `remark="Example \"Web\" host"`. Existing entries without remarks remain valid.
 
 ---
 

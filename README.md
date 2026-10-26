@@ -72,7 +72,7 @@ pip install -e .
 
 ```ini
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22
+192.168.1.10 user=root password=passw0rd port=22 remark="示例 Web 主机"
 192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
 
 [dbservers]
@@ -92,6 +92,8 @@ pip install -e .
 - `proxy_password`
 - `proxy_keyfile`
 - `proxy_port`
+
+可选备注字段：`remark="备注内容"`，仅供人工查看，程序不会将其用于主机匹配、SSH 连接或业务操作。含空格的备注必须加引号；双引号内的双引号写成 `\"`，例如 `remark="示例 \"Web\" 主机"`。未填写备注的原有配置可继续使用。
 
 ## CLI 使用
 

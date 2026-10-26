@@ -37,7 +37,7 @@
 | `cli.py` | CLI 主入口，详见“入口索引” |
 | `pyproject.toml` | 项目元数据和 Python 工具配置 |
 | `README.md`、`README.en.md` | 中文和英文公开使用说明 |
-| `hosts.example` | CLI 主机清单格式示例；不含真实资产 |
+| `hosts.example` | CLI 主机清单格式示例；含仅供人工查看的可选 `remark` 备注，不含真实资产 |
 | `LICENSE` | MIT 许可证 |
 
 ## 入口索引
@@ -58,7 +58,7 @@
 
 | 功能 | 首选模块/文件 | 当前状态 |
 | --- | --- | --- |
-| 主机清单解析和 SSH 连接 | `cli.py`、`utils/ssh_utils.py` | CLI 已接入；主机配置格式参见 `hosts.example` |
+| 主机清单解析和 SSH 连接 | `cli.py`、`utils/ssh_utils.py` | CLI 已接入；主机配置格式参见 `hosts.example`；可选 `remark` 仅供人工查看，不进入连接配置 |
 | 主机名设置 | `server_ops/hostname_ops.py` | CLI 菜单已接入 |
 | 软件包和 DNF 仓库管理 | `server_ops/pkg_ops.py` | CLI 菜单已接入 |
 | firewalld/SELinux 管理 | `server_ops/firewall_ops.py` | CLI 菜单已接入 |
@@ -192,3 +192,7 @@
 | `config/prometheus/` | `mysqld-exporter.service`、`mysqld_exporter.conf`、`node-exporter.service`、`prometheus.service`、`prometheus.yml`、`redis-exporter.service` |
 | `config/redis/` | `redis.service` |
 | `config/supervisor/` | `program.ini`、`supervisord.conf`、`supervisord.service` |
+
+## 变更记录
+
+- 2026-10-26：在 `hosts.example` 和中英文使用说明中补充可选 `remark="备注内容"` 及引号用法；复用现有解析器忽略未使用字段的行为，备注不进入主机连接配置。

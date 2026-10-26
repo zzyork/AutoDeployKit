@@ -1,10 +1,12 @@
 # Sample hosts file for AutoDeployKit
-# This file is gitignored for security reasons
+# Copy this example to hosts; hosts is gitignored for security reasons
 # Format: [group_name]
-#         host_ip user=username password=xxx port=22 keyfile="path" vip=virtual_ip proxy=proxy_host proxy_user=xxx proxy_password=xxx proxy_port=22
+#         host_ip user=username password=xxx port=22 keyfile="path" vip=virtual_ip proxy=proxy_host proxy_user=xxx proxy_password=xxx proxy_port=22 remark="备注内容"
+# remark is optional, for human reference only, and is not used by the program.
+# Use quotes around remarks containing spaces; escape embedded double quotes as \".
 
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22
+192.168.1.10 user=root password=passw0rd port=22 remark="示例 Web 主机"
 192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
 192.168.1.12 user=admin password=admin123 port=2222 vip=192.168.1.100
 
