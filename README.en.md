@@ -165,28 +165,30 @@ Example:
 
 ```ini
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22 remark="Example Web host"
-192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
+192.0.2.10 user=root port=22 password="example-password" proxy="" hostname="web-01" lan_ip="10.0.0.10" vip="" remark="Example Web host"
+192.0.2.11 user=admin port=22 keyfile="/path/to/private_key" proxy="" hostname="web-02" lan_ip="10.0.0.11" vip="192.0.2.100" remark="Key authentication"
 
 [dbservers]
-10.0.0.5 user=root keyfile="/path/to/key" port=22
-10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
+10.0.0.5 user=root port=22 keyfile="/path/to/db_key" proxy="192.0.2.2" proxy_user=jump proxy_port=22 proxy_keyfile="/path/to/jump_key" hostname="db-01" lan_ip="10.0.0.5" vip="" remark="Via jump host"
 ```
 
-Supported fields:
+Recommended field order (parsing is order-independent):
 
-- `user`
-- `port`
-- `password`
-- `keyfile`
-- `vip`
-- `proxy`
-- `proxy_user`
-- `proxy_password`
-- `proxy_keyfile`
-- `proxy_port`
+| Item | Field | Required | Meaning |
+| --- | --- | --- | --- |
+| Address | First item on the line | Yes | Host IP or domain, used for matching |
+| Username | `user` | Yes | SSH login user |
+| Port | `port` | Yes | Explicit integer from 1 to 65535 |
+| Password / SSH key | `password` / `keyfile` | At least one | Nonempty authentication; key takes precedence when both are provided |
+| Jump host | `proxy` | No | Use with `proxy_user`, `proxy_port`, and `proxy_password` / `proxy_keyfile` |
+| Hostname | `hostname` | No | Inventory metadata; does not change the remote hostname |
+| LAN IP | `lan_ip` | No | Inventory metadata; does not select the SSH destination |
+| Virtual IP (VIP) | `vip` | No | Preserves existing behavior: used as the SSH destination when nonempty |
+| Notes | `remark` | No | Inventory metadata; not used for matching or operations |
 
-Optional annotation: `remark="Notes"` is for human reference only and is not used for host matching, SSH connections, or operations. Quote remarks containing spaces and escape embedded double quotes as `\"`, for example `remark="Example \"Web\" host"`. Existing entries without remarks remain valid.
+Optional fields may be omitted or set to `""`. Invalid selected entries (missing required fields, invalid ports, or malformed parameters) abort loading before any connection. Existing entries remain valid if they satisfy these requirements.
+
+Quote values containing spaces and escape embedded double quotes as `\"`, for example `remark="Example \"Web\" host"`. Use double quotes for Windows key paths, for example `keyfile="C:\Users\example\.ssh\id_ed25519"`.
 
 ---
 

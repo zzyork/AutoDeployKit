@@ -15,7 +15,10 @@ def parse_host_pattern(pattern, filename="hosts"):
     # Disable interpolation to allow raw '%' in host parameters
     config = configparser.ConfigParser(allow_no_value=True, delimiters=(" ",), interpolation=None)
     config.optionxform = str
-    read_files = config.read(filename, encoding="utf-8")
+    try:
+        read_files = config.read(filename, encoding="utf-8")
+    except configparser.Error:
+        sys.exit("错误：hosts 格式错误，请检查分组、地址及重复条目")
     if not read_files:
         print(f"错误：未找到hosts文件：{filename}")
         sys.exit(1)
@@ -64,6 +67,8 @@ def load_hosts(pattern, filename="hosts"):
     hosts = []
     for section, line in host_entries:
         host = line[0]
+        if not host.strip() or "=" in host:
+            sys.exit(f"错误：[{section}] 主机条目缺少有效的行首地址")
         params = {}
         if line[1]:
             try:
@@ -73,16 +78,30 @@ def load_hosts(pattern, filename="hosts"):
                 
                 for item in param_items:
                     if '=' not in item:
-                        continue
+                        raise ValueError("参数必须使用 key=value 格式")
                     k, v = item.split("=", 1)
-                    v = v.strip('"').strip("'")
                     if k == "keyfile":
                         params["key_file"] = v
                     else:
                         params[k] = v
-            except Exception:
-                print(f"解析参数错误，跳过该条目: {line}")
-                continue
+            except ValueError:
+                sys.exit(f"错误：[{section}] 主机 {host} 参数格式错误，请检查引号及 key=value 格式")
+
+        missing = []
+        if not params.get("user", "").strip():
+            missing.append("用户名（user）")
+        if not params.get("port", "").strip():
+            missing.append("端口（port）")
+        if not (params.get("password") or params.get("key_file", "").strip()):
+            missing.append("密码或 SSH 密钥（password/keyfile）")
+        if missing:
+            sys.exit(f"错误：[{section}] 主机 {host} 缺少必填项：{'、'.join(missing)}")
+        try:
+            port = int(params["port"])
+            if not 1 <= port <= 65535:
+                raise ValueError("端口超出范围")
+        except ValueError:
+            sys.exit(f"错误：[{section}] 主机 {host} 的端口必须为 1–65535 的整数")
 
         hosts.append({
             "host": host,
@@ -96,6 +115,9 @@ def load_hosts(pattern, filename="hosts"):
             "proxy_password": params.get("proxy_password"),
             "proxy_keyfile": params.get("proxy_keyfile"),
             "proxy_port": params.get("proxy_port"),
+            "hostname": params.get("hostname"),
+            "lan_ip": params.get("lan_ip"),
+            "remark": params.get("remark"),
             "group": section  # Add group information
         })
     return hosts

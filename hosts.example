@@ -1,19 +1,16 @@
-# Sample hosts file for AutoDeployKit
-# Copy this example to hosts; hosts is gitignored for security reasons
-# Format: [group_name]
-#         host_ip user=username password=xxx port=22 keyfile="path" vip=virtual_ip proxy=proxy_host proxy_user=xxx proxy_password=xxx proxy_port=22 remark="备注内容"
-# remark is optional, for human reference only, and is not used by the program.
-# Use quotes around remarks containing spaces; escape embedded double quotes as \".
+# 复制为 hosts 使用；hosts 已被 Git 忽略，请勿提交真实服务器信息。
+# 字段顺序：地址、用户名、端口、密码/SSH密钥、跳板机、主机名、局域网IP、虚拟IP（VIP）、备注。
+# 必填：行首地址、user、port，以及 password/keyfile 至少一个非空值。
+# port 必须为 1–65535 的整数；同时填写 password/keyfile 时优先使用密钥。
+# 可选字段可省略或留空；hostname、lan_ip、remark 仅作信息登记，不修改远程主机。
+# 跳板机字段：proxy、proxy_user、proxy_port、proxy_password/proxy_keyfile。
+# vip 非空时优先用作 SSH 连接地址；未填写时使用行首地址。
+# 含空格的值需加引号，双引号中的双引号使用 \"；Windows 密钥路径使用双引号。
 
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22 remark="示例 Web 主机"
-192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
-192.168.1.12 user=admin password=admin123 port=2222 vip=192.168.1.100
+192.0.2.10 user=root port=22 password="example-password" proxy="" hostname="web-01" lan_ip="10.0.0.10" vip="" remark="示例 Web 主机"
+192.0.2.11 user=admin port=22 keyfile="/path/to/private_key" proxy="" hostname="web-02" lan_ip="10.0.0.11" vip="192.0.2.100" remark="密钥认证示例"
 
 [dbservers]
-10.0.0.5 user=root keyfile="/path/to/db_key" port=22
-10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
-
-[monitoring]
-192.168.1.20 user=centos password=centos123 port=22
-192.168.1.21 user=centos keyfile="~/.ssh/monitor_key" port=22
+10.0.0.5 user=root port=22 keyfile="/path/to/db_key" proxy="192.0.2.2" proxy_user=jump proxy_port=22 proxy_keyfile="/path/to/jump_key" hostname="db-01" lan_ip="10.0.0.5" vip="" remark="经跳板机连接"
+192.0.2.20 user=root port=22 password="example-password"

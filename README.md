@@ -72,28 +72,30 @@ pip install -e .
 
 ```ini
 [webservers]
-192.168.1.10 user=root password=passw0rd port=22 remark="示例 Web 主机"
-192.168.1.11 user=ec2-user keyfile="~/.ssh/id_rsa" port=22
+192.0.2.10 user=root port=22 password="example-password" proxy="" hostname="web-01" lan_ip="10.0.0.10" vip="" remark="示例 Web 主机"
+192.0.2.11 user=admin port=22 keyfile="/path/to/private_key" proxy="" hostname="web-02" lan_ip="10.0.0.11" vip="192.0.2.100" remark="密钥认证示例"
 
 [dbservers]
-10.0.0.5 user=root keyfile="/path/to/key" port=22
-10.0.0.6 user=mysql password=mysqlpass port=22 proxy=10.0.0.2 proxy_user=jump proxy_password=jumppass proxy_port=22
+10.0.0.5 user=root port=22 keyfile="/path/to/db_key" proxy="192.0.2.2" proxy_user=jump proxy_port=22 proxy_keyfile="/path/to/jump_key" hostname="db-01" lan_ip="10.0.0.5" vip="" remark="经跳板机连接"
 ```
 
-支持字段：
+字段按以下顺序登记；解析时不限制顺序：
 
-- `user`
-- `port`
-- `password`
-- `keyfile`
-- `vip`
-- `proxy`
-- `proxy_user`
-- `proxy_password`
-- `proxy_keyfile`
-- `proxy_port`
+| 项目 | 写法 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| 地址 | 每行首项 | 是 | 主机 IP 或域名，也是主机匹配标识 |
+| 用户名 | `user` | 是 | SSH 登录用户 |
+| 端口 | `port` | 是 | 1–65535 的整数，必须显式填写 |
+| 密码/SSH 密钥 | `password` / `keyfile` | 至少一项 | 必须非空；同时填写时优先使用密钥 |
+| 跳板机 | `proxy` | 否 | 配合 `proxy_user`、`proxy_port` 和 `proxy_password` / `proxy_keyfile` 使用 |
+| 主机名 | `hostname` | 否 | 信息登记，不自动设置远程主机名 |
+| 局域网 IP | `lan_ip` | 否 | 信息登记，不参与 SSH 地址选择 |
+| 虚拟 IP（VIP） | `vip` | 否 | 沿用原有行为：非空时优先作为 SSH 连接地址 |
+| 备注 | `remark` | 否 | 信息登记，不参与主机匹配或业务操作 |
 
-可选备注字段：`remark="备注内容"`，仅供人工查看，程序不会将其用于主机匹配、SSH 连接或业务操作。含空格的备注必须加引号；双引号内的双引号写成 `\"`，例如 `remark="示例 \"Web\" 主机"`。未填写备注的原有配置可继续使用。
+可选字段可省略或写为 `字段=""`。选择的主机缺少必填项、端口无效或参数格式错误时，程序报错退出，不建立连接。原有配置满足必填要求即可继续使用。
+
+含空格的值必须加引号；双引号内的双引号写成 `\"`，例如 `remark="示例 \"Web\" 主机"`。Windows 密钥路径使用双引号，例如 `keyfile="C:\Users\example\.ssh\id_ed25519"`。
 
 ## CLI 使用
 
